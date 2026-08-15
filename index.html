@@ -1342,6 +1342,19 @@ function installTrigger(){
 }
 
 /**
+ * ONE-SHOT reset (run manually from the dropdown, not a trigger):
+ * deletes every Career/* and Status/* label, then rebuilds the clean
+ * Career > Internship|Associate > Year > Month tree. Emails are untouched.
+ */
+function resetLabels(){
+  GmailApp.getUserLabels().forEach(function(l){
+    var n = l.getName();
+    if(n.indexOf("Career") === 0 || n.indexOf("Status") === 0){ try{ l.deleteLabel(); }catch(e){} }
+  });
+  precreateLabels();
+}
+
+/**
  * Auto-cleanup: trashes the CV / cover / email-PDF / NDA / other Drive files
  * of candidates who have been REJECTED for more than SWEEP_DAYS days.
  * Reads the shared dashboard state (written by Cohort) and clears the links
@@ -1418,7 +1431,8 @@ function processInbox(){
     if(existing){ writeRow(sheet, existing.rowIndex, row); }   // supersede older
     else { sheet.appendRow(row); }
 
-    applyLabels(th, p); label(th,"Status/New"); sendAck(msg, p);
+    applyLabels(th, p); label(th,"Status/New");
+    if(!alreadyAcked(email, p)){ sendAck(msg, p); recordAck(email, p); }
   });
 }
 
@@ -1426,21 +1440,40 @@ function processInbox(){
 function parseApplication(text){
   var t = String(text||"").toLowerCase();
   var track = /assoc/.test(t) ? "Associate" : "Internship";
-  var month = -1, mi;
-  // find a month word
-  var mMatch = t.match(/(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*/);
-  if(mMatch){ month = MON_ABBR[mMatch[1]]; mi = mMatch.index; }
-  // numeric month like 09/2026 or 9-2026
+  var month = -1;
   var year = -1;
-  var y4 = t.match(/\b(20\d{2})\b/);                 // explicit 4-digit year
-  var y2 = t.match(/['\u2019\u2018](\d{2})\b/) || t.match(/\b(?:sept?|[a-z]{3,9})[ ,.\-]+(\d{2})\b/);
-  if(y4){ year = parseInt(y4[1],10); }
-  else if(y2){ year = 2000 + parseInt(y2[1],10); }   // 'Sept 26' -> 2026
+
+  // 1) a 4-digit year is authoritative when present
+  var y4 = t.match(/\b(20\d{2})\b/);
+  if(y4) year = parseInt(y4[1],10);
+
+  // 2) month from a written month word (Jan, September, Sept, etc.)
+  var mMatch = t.match(/(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*/);
+  if(mMatch) month = MON_ABBR[mMatch[1]];
+
+  // 3) no month word -> read a numeric date
   if(month<0){
-    var num = t.match(/\b(0?[1-9]|1[0-2])[\/\-.](20\d{2}|\d{2})\b/);   // 09/2026 or 9-26
-    if(num){ month = parseInt(num[1],10)-1; year = num[2].length===4?parseInt(num[2],10):2000+parseInt(num[2],10); }
+    // full date d/m/yyyy or d-m-yy  (Indian D/M/Y: the MIDDLE number is the month)
+    var full = t.match(/\b(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})\b/);
+    if(full){
+      var mm = parseInt(full[2],10);
+      if(mm>=1 && mm<=12) month = mm-1;
+      if(year<0){ var yy=full[3]; year = yy.length===4?parseInt(yy,10):2000+parseInt(yy,10); }
+    } else {
+      // month/year only, e.g. 09/2026 or 9-26
+      var num = t.match(/\b(0?[1-9]|1[0-2])[\/\-.](20\d{2}|\d{2})\b/);
+      if(num){ month = parseInt(num[1],10)-1; if(year<0) year = num[2].length===4?parseInt(num[2],10):2000+parseInt(num[2],10); }
+    }
   }
+
+  // 4) 2-digit year fallback (e.g. "September '26")
+  if(year<0){
+    var y2 = t.match(/['\u2019\u2018](\d{2})\b/) || t.match(/\b(?:sept?|[a-z]{3,9})[ ,.\-]+(\d{2})\b/);
+    if(y2) year = 2000 + parseInt(y2[1],10);
+  }
+
   if(month<0 || year<0) return null;                 // can't be sure -> Needs-fix
+  if(year < 2024 || year > 2100) return null;        // sanity guard against misreads
   return { track:track, month:MONTHS[month], year:year };
 }
 function firstLine(msg){ return (msg.getPlainBody()||"").split(/\n/).slice(0,3).join(" "); }
@@ -1499,6 +1532,22 @@ function sendAck(msg, p){
     "Dear "+senderName(msg)+",\n\nThank you for writing to us — your application for "+p.month+" "+p.year+
     " has reached the Chambers and has been logged for review.\n\nWarm regards,\nThe Chambers of Bharat Chugh", {name:"The Chambers of Bharat Chugh"});
 }
+/* Acknowledgement guard: a persistent "Acked" sheet so no applicant is ever
+   emailed the "received" note twice — survives label resets and re-runs. */
+function ackSheet(){
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sh = ss.getSheetByName("Acked");
+  if(!sh){ sh = ss.insertSheet("Acked"); sh.appendRow(["Key"]); }
+  return sh;
+}
+function ackKey(email, p){ return String(email).toLowerCase()+"|"+p.track+"|"+p.month+"|"+p.year; }
+function alreadyAcked(email, p){
+  var key = ackKey(email, p);
+  var vals = ackSheet().getRange("A:A").getValues();
+  for(var i=0;i<vals.length;i++){ if(vals[i][0]===key) return true; }
+  return false;
+}
+function recordAck(email, p){ ackSheet().appendRow([ackKey(email, p)]); }
 function sendNeedsFix(msg){
   GmailApp.sendEmail(cleanEmail(msg.getFrom()), "A quick fix needed on your application — Chambers of Bharat Chugh",
     "Dear Applicant,\n\nWe could not read the month you are applying for from your email. Please resend with the "+
