@@ -1373,14 +1373,18 @@ function autoSweepRejected(){
 }
 function precreateLabels(){
   var y = new Date().getFullYear();
+  getLabel("Career");
   ["Internship","Associate"].forEach(function(track){
+    getLabel("Career/"+track);
     for(var yr=y; yr<=y+5; yr++){
+      getLabel("Career/"+track+"/"+yr);
       for(var m=0;m<12;m++){
         var pref = (m<9?"0":"")+(m+1)+" "+MONTHS[m];
         getLabel("Career/"+track+"/"+yr+"/"+pref);
       }
     }
   });
+  getLabel("Status");
   ["New","Needs-fix","Superseded"].forEach(function(s){ getLabel("Status/"+s); });
 }
 
