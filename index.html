@@ -1417,6 +1417,7 @@ function processInbox(){
     threads.sort(function(a,b){ return a.getMessages()[0].getDate() - b.getMessages()[0].getDate(); });
 
     for(var i=0;i<threads.length;i++){
+      if(Date.now() - start > 280000) return;     // exit cleanly before the 6-min cap; next run resumes
       var th = threads[i];
       var msg = th.getMessages()[th.getMessages().length-1];
       var p = parseApplication((msg.getSubject()||"") + "  " + firstLine(msg));
