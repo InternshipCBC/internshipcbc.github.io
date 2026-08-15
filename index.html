@@ -470,10 +470,29 @@ body{background:var(--color-bg);color:var(--color-text);transition:background .2
                   <div style="display:flex;align-items:center;gap:10px"><span class="text-muted" style="font-size:11.5px">{{ lastSyncLabel }}</span><button class="btn btn-primary" onClick="{{ doSyncNow }}" disabled="{{ syncingNow }}" style="white-space:nowrap"><i class="ph ph-arrows-clockwise"></i> Sync now</button></div>
                 </div>
               </div>
+              <sc-if value="{{ hasSyncError }}" hint-placeholder-val="{{ false }}">
+                <div class="card elev-sm" style="border-color:color-mix(in srgb,var(--danger) 55%,transparent)">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px">
+                    <h4 style="margin:0;color:var(--danger)"><i class="ph ph-warning-circle"></i> Last sync error</h4>
+                    <div style="display:flex;gap:6px">
+                      <button class="btn btn-secondary" onClick="{{ copySyncError }}" style="font-size:11.5px;padding:6px 10px"><i class="ph ph-copy"></i> Copy</button>
+                      <button class="btn btn-secondary" onClick="{{ clearSyncError }}" style="font-size:11.5px;padding:6px 10px">Clear</button>
+                    </div>
+                  </div>
+                  <p class="text-muted" style="font-size:11px;margin:0 0 8px">Copy this and paste it in chat so it can be diagnosed. It clears automatically on the next successful sync.</p>
+                  <pre style="white-space:pre-wrap;font-family:ui-monospace,Menlo,monospace;font-size:11.5px;line-height:1.5;background:var(--color-bg);border-radius:var(--radius-md);padding:var(--space-4);margin:0;color:color-mix(in srgb,var(--color-text) 88%,transparent)">{{ syncErrorText }}</pre>
+                </div>
+              </sc-if>
               <div class="card elev-sm">
                 <h4 style="margin:0 0 2px">Data & backup</h4>
                 <p class="text-muted" style="font-size:12px;margin:0 0 var(--space-3)">Everything is stored on this device and (when connected) mirrored to your Google Sheet. Keep periodic backups; restore replaces all local data.</p>
                 <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-secondary" onClick="{{ backupJson }}"><i class="ph ph-download-simple"></i> Export backup (JSON)</button><button class="btn btn-secondary" onClick="{{ restoreJson }}"><i class="ph ph-upload-simple"></i> Restore from backup</button><button class="btn btn-secondary" onClick="{{ exportAllExcel }}"><i class="ph ph-file-xls"></i> Export all candidates</button></div>
+                <sc-if value="{{ hasDemo }}" hint-placeholder-val="{{ true }}">
+                  <div style="margin-top:var(--space-3);padding-top:var(--space-3);border-top:1px solid var(--color-divider)">
+                    <p class="text-muted" style="font-size:12px;margin:0 0 8px">The dashboard ships with sample cohorts &amp; candidates so you can explore it. Remove them once your real applications are syncing in.</p>
+                    <button class="btn btn-secondary" onClick="{{ clearDemo }}" style="color:var(--warn);border-color:color-mix(in srgb,var(--warn) 50%,transparent)"><i class="ph ph-broom"></i> Remove sample data</button>
+                  </div>
+                </sc-if>
               </div>
             </div>
           </sc-if>
@@ -961,8 +980,8 @@ class Component extends DCLogic {
       {id:'u_mayank', name:'Mayank Sir', roleId:'role_admin', pass:this.hash('cohort'), mustReset:true, phaseVisible:5, approvePhases:[4], approverLabel:'Final approver'},
       {id:'u_bharat', name:'Bharat Sir', roleId:'role_admin', pass:this.hash('cohort'), mustReset:true, phaseVisible:5, approvePhases:[4], approverLabel:'Final approver (optional)'}
     ];
-    const coh=this.mkCohort('December', 2026, 'active');
-    const cohNov=this.mkCohort('November', 2026, 'active');
+    const coh=this.mkCohort('December', 2026, 'active'); coh.demo=true;
+    const cohNov=this.mkCohort('November', 2026, 'active'); cohNov.demo=true;
     cohNov.deadlines={ applyClose:now-6*86400000, shortlistBy:now-1*86400000, interviewBy:now+4*86400000, approveBy:now+9*86400000 };
     const cands=this.seedCandidates(coh.id).concat(this.seedCandidates2(cohNov.id));
     return {
@@ -1155,7 +1174,7 @@ class Component extends DCLogic {
     if(!urls.length){ this.flash('No Drive files to purge'); return; }
     if(!confirm('Delete '+urls.length+' Drive file(s) for '+(c.name||'this candidate')+'? The record and history stay; only the files are removed. This cannot be undone.')) return;
     const url=this.apiUrl();
-    if(url){ try{ await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({token:this.data.settings.apiToken||'',action:'purgeFiles',urls})}); }catch(e){ this.flash('Purge request failed — check endpoint'); return; } }
+    if(url){ try{ await fetch(url,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({token:this.data.settings.apiToken||'',action:'purgeFiles',urls})}); }catch(e){ this.flash('Purge request failed — check endpoint'); return; } }
     c.cvUrl='';c.clUrl='';c.emailPdfUrl='';c.otherUrl='';c.ndaUrl=''; c.filesPurged=Date.now(); this.logHist(c,'Drive files purged'); c.updatedAt=Date.now(); this.persist(); this.setState({rev:this.state.rev+1});
     this.flash(url?('Purged '+urls.length+' file(s) from Drive'):'Links cleared (connect endpoint to delete from Drive)'); }
   bulkPurge(){ const s=new Set(this.state.sel||[]); const cands=this.cohCands().filter(c=>s.has(c.id)&&c.outcome==='rejected'&&(c.cvUrl||c.clUrl||c.emailPdfUrl||c.otherUrl||c.ndaUrl));
@@ -1163,7 +1182,7 @@ class Component extends DCLogic {
     if(!confirm('Purge Drive files for '+cands.length+' rejected candidate(s)? Records stay; only files are removed.')) return;
     const url=this.apiUrl(); const allUrls=[];
     cands.forEach(c=>{ [c.cvUrl,c.clUrl,c.emailPdfUrl,c.otherUrl,c.ndaUrl].filter(Boolean).forEach(u=>allUrls.push(u)); c.cvUrl='';c.clUrl='';c.emailPdfUrl='';c.otherUrl='';c.ndaUrl='';c.filesPurged=Date.now();this.logHist(c,'Drive files purged (bulk)');c.updatedAt=Date.now(); });
-    if(url){ try{ fetch(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({token:this.data.settings.apiToken||'',action:'purgeFiles',urls:allUrls})}); }catch(e){} }
+    if(url){ try{ fetch(url,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({token:this.data.settings.apiToken||'',action:'purgeFiles',urls:allUrls})}); }catch(e){} }
     this.persist(); this.setState({sel:[],rev:this.state.rev+1}); this.flash('Purged files for '+cands.length+' candidate(s)'); }
   drawerActions(c){
     const P='color:var(--color-accent);border:1px solid var(--color-accent);background:transparent;padding:7px 13px;font-size:12.5px;border-radius:var(--radius-md);font-weight:500';
@@ -1590,8 +1609,15 @@ const API_TOKEN = "set-a-long-secret-and-match-it-in-cohort";   // <-- change me
 const STATE_SHEET = "State";
 
 function doGet(e){
-  if((e.parameter.token||"") !== API_TOKEN) return json({error:"unauthorized"});
-  return json({ ok:true, state: readState(), applications: readApplications(), updatedAt: readUpdatedAt() });
+  if((e.parameter.token||"") !== API_TOKEN) return reply(e, {error:"unauthorized"});
+  return reply(e, { ok:true, state: readState(), applications: readApplications(), updatedAt: readUpdatedAt() });
+}
+// Supports JSONP: if a ?callback= is present, wrap the JSON so a browser <script> tag can read it cross-origin.
+function reply(e, obj){
+  var s = JSON.stringify(obj);
+  var cb = e && e.parameter && e.parameter.callback;
+  if(cb) return ContentService.createTextOutput(cb+"("+s+")").setMimeType(ContentService.MimeType.JAVASCRIPT);
+  return ContentService.createTextOutput(s).setMimeType(ContentService.MimeType.JSON);
 }
 function doPost(e){
   var body = {};
@@ -1781,28 +1807,65 @@ function json(o){ return ContentService.createTextOutput(JSON.stringify(o)).setM
     const url=this.apiUrl(); if(!url){ if(!silent)this.flash('Add the sync endpoint first'); return; }
     const token=this.data.settings.apiToken||'';
     this.setState({syncing:true, syncMsg:'Syncing…'});
+    const t0=Date.now();
     try{
-      // 1) pull remote state + new applications
-      const res=await fetch(url+'?token='+encodeURIComponent(token)+'&action=all', {method:'GET'});
-      const remote=await res.json();
-      if(remote && remote.error) throw new Error(remote.error);
+      // 1) pull remote state + new applications via JSONP (bypasses cross-origin CORS on GET)
+      const remote=await this.jsonpGet(url+'?token='+encodeURIComponent(token)+'&action=all&callback=?');
+      if(remote && remote.error) throw new Error('Endpoint returned: '+remote.error);
       let added=0;
       if(remote){
         if(remote.state){ let rs=remote.state; if(typeof rs==='string'){ try{rs=JSON.parse(rs);}catch(e){rs=null;} } if(rs) this.mergeCandidates(rs); }
         added=this.importApplications(remote.applications||[]);
       }
-      // 2) push merged state back so the whole team shares it
+      // 2) push merged state back (fire-and-forget, no-cors — server records it, we don't read the reply)
       this.data.updatedAt=Date.now();
-      await fetch(url, {method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+      await fetch(url, {method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=utf-8'},
         body:JSON.stringify({token, action:'saveState', updatedAt:this.data.updatedAt, state:JSON.stringify(this.exportState())}) });
-      this.data.settings.lastSync=Date.now(); this.persist();
+      this.data.settings.lastSync=Date.now(); this.data.settings.lastSyncError=''; this.persist();
       this.setState({syncing:false, syncMsg:'', rev:this.state.rev+1});
       if(!silent) this.flash(added? ('Synced — '+added+' new application(s) imported') : 'Synced — everyone is up to date');
     }catch(err){
-      this.setState({syncing:false, syncMsg:''});
-      if(!silent) this.flash('Sync failed: '+(err&&err.message||'network')+'. Check the endpoint & token.');
+      const detail=[
+        'Time: '+new Date().toISOString(),
+        'Phase: sync',
+        'Elapsed: '+(Date.now()-t0)+'ms',
+        'Endpoint host: '+(this.apiUrl().replace(/^https:\/\/([^\/]+).*/,'$1')),
+        'Token set: '+(token?'yes ('+token.length+' chars)':'NO'),
+        'Error: '+((err&&err.name)||'Error')+' — '+((err&&err.message)||String(err)),
+        'Hint: '+this.syncHint(err)
+      ].join('\n');
+      this.data.settings.lastSyncError=detail; this.persist();
+      this.setState({syncing:false, syncMsg:'', rev:this.state.rev+1});
+      if(!silent) this.flash('Sync failed — see the error detail on this page.');
     }
   }
+  syncHint(err){
+    const m=((err&&err.message)||'').toLowerCase();
+    if(m.includes('timeout')||m.includes('timed out')) return 'The endpoint did not respond in time. Re-run, or check the script is deployed.';
+    if(m.includes('unauthorized')) return 'Token mismatch — the Secret token here must exactly equal API_TOKEN in WebApp.gs.';
+    if(m.includes('load')||m.includes('network')||m.includes('fetch')) return 'Could not reach the endpoint. Confirm the /exec URL is a Web App deployment set to “Anyone”, and re-deploy a New version after code changes.';
+    return 'Copy this and share it for diagnosis.';
+  }
+  jsonpGet(url){
+    return new Promise((resolve,reject)=>{
+      const cb='cohort_jsonp_'+Math.random().toString(36).slice(2);
+      const s=document.createElement('script');
+      const timer=setTimeout(()=>{ cleanup(); reject(new Error('Request timed out (no response in 30s)')); }, 30000);
+      function cleanup(){ clearTimeout(timer); try{ delete window[cb]; }catch(e){ window[cb]=undefined; } if(s.parentNode) s.parentNode.removeChild(s); }
+      window[cb]=(data)=>{ cleanup(); resolve(data); };
+      s.onerror=()=>{ cleanup(); reject(new Error('Failed to load endpoint (network/blocked/redirect)')); };
+      s.src=url.replace('callback=?','callback='+cb);
+      document.body.appendChild(s);
+    });
+  }
+  clearSyncError(){ this.data.settings.lastSyncError=''; this.persist(); this.setState({rev:this.state.rev+1}); }
+  copySyncError(){ this.copyTxt(this.data.settings.lastSyncError||''); }
+  clearDemo(){ if(!confirm('Remove all sample cohorts and candidates? Your real synced data is not affected.')) return;
+    const demoIds=new Set((this.data.cohorts||[]).filter(c=>c.demo).map(c=>c.id));
+    this.data.cohorts=(this.data.cohorts||[]).filter(c=>!c.demo);
+    this.data.candidates=(this.data.candidates||[]).filter(c=>!demoIds.has(c.cohortId));
+    if(demoIds.has(this.state.activeCohortId)){ const a=(this.data.cohorts[0]||{}).id||''; this.state.activeCohortId=a; }
+    this.save('Sample data removed'); }
   exportState(){ // the shared document (everything except device-only bits)
     return { candidates:this.data.candidates, cohorts:this.data.cohorts, users:this.data.users, roles:this.data.roles,
       savedOptions:this.data.savedOptions, emailTemplates:this.data.emailTemplates, inviteText:this.data.inviteText,
@@ -1813,7 +1876,7 @@ function json(o){ return ContentService.createTextOutput(JSON.stringify(o)).setM
       try{ window.open('mailto:'+encodeURIComponent(to)+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(text),'_blank'); }catch(e){}
       return false;
     }
-    try{ await fetch(url, {method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+    try{ await fetch(url, {method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=utf-8'},
       body:JSON.stringify({token:this.data.settings.apiToken||'', action:'sendEmail', to, subject, text, attachments:attachments||[]}) }); return true;
     }catch(e){ this.flash('Email send failed — check the endpoint'); return false; }
   }
@@ -1877,7 +1940,9 @@ function json(o){ return ContentService.createTextOutput(JSON.stringify(o)).setM
       lastSyncLabel: this.data.settings.lastSync? ('Last synced '+new Date(this.data.settings.lastSync).toLocaleString('en-IN')) : 'Never synced yet',
       connected:!!this.apiUrl(), doSyncNow:()=>this.syncNow(false), syncingNow:this.state.syncing,
       connBadge:this.apiUrl()?'Connected':'Not connected', connBadgeStyle:'font-size:10px;font-weight:700;padding:2px 8px;border-radius:6px;'+(this.apiUrl()?'background:color-mix(in srgb,var(--ok) 20%,transparent);color:var(--ok)':'background:var(--color-neutral-800);color:var(--color-neutral-200)'),
-      backupJson:()=>this.backupJson(), exportAllExcel:()=>this.exportAllExcel(), restoreJson:()=>this.restoreJson() };
+      backupJson:()=>this.backupJson(), exportAllExcel:()=>this.exportAllExcel(), restoreJson:()=>this.restoreJson(),
+      hasSyncError:!!(this.data.settings.lastSyncError), syncErrorText:this.data.settings.lastSyncError||'', copySyncError:()=>this.copySyncError(), clearSyncError:()=>this.clearSyncError(),
+      hasDemo:(this.data.cohorts||[]).some(c=>c.demo), clearDemo:()=>this.clearDemo() };
   }
 
   // ---------- timeline ----------
