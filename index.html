@@ -1402,7 +1402,7 @@ function precreateLabels(){
 }
 
 function processInbox(){
-  var q = 'newer_than:120d to:internship.cbc@gmail.com -label:Status/New -label:Status/Needs-fix -label:Status/Superseded';
+  var q = 'newer_than:400d to:internship.cbc@gmail.com -label:Status/New -label:Status/Needs-fix -label:Status/Superseded';
   var threads = GmailApp.search(q, 0, 50);
   var sheet   = SpreadsheetApp.openById(SHEET_ID).getSheetByName("Applications") || setupSheet();
   var folder  = DriveApp.getFolderById(CV_FOLDER_ID);
@@ -1418,9 +1418,15 @@ function processInbox(){
     var email = cleanEmail(msg.getFrom());
     var key   = email.toLowerCase()+"|"+p.track+"|"+p.month+"|"+p.year;
 
-    // de-dupe: same applicant + same month+year => keep only the newest
+    // ALWAYS apply the month label to the thread first (so reruns after a
+    // label reset re-file every past mail), then handle the sheet row.
+    applyLabels(th, p);
+
     var existing = findRowByKey(sheet, key);
-    if(existing && existing.date >= msg.getDate().getTime()){ label(th,"Status/Superseded"); return; }
+    if(existing && existing.date > msg.getDate().getTime()){
+      // a newer email from this applicant for the same month already logged
+      label(th,"Status/Superseded"); return;
+    }
 
     // save attachments (fuzzy classified) + the email body as a PDF
     var files = classifyAndSave(msg, folder, senderName(msg), p);
@@ -1431,7 +1437,7 @@ function processInbox(){
     if(existing){ writeRow(sheet, existing.rowIndex, row); }   // supersede older
     else { sheet.appendRow(row); }
 
-    applyLabels(th, p); label(th,"Status/New");
+    label(th,"Status/New");
     if(!alreadyAcked(email, p)){ sendAck(msg, p); recordAck(email, p); }
   });
 }
