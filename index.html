@@ -1402,44 +1402,50 @@ function precreateLabels(){
 }
 
 function processInbox(){
-  var q = 'newer_than:400d to:internship.cbc@gmail.com -label:Status/New -label:Status/Needs-fix -label:Status/Superseded';
-  var threads = GmailApp.search(q, 0, 50);
   var sheet   = SpreadsheetApp.openById(SHEET_ID).getSheetByName("Applications") || setupSheet();
   var folder  = DriveApp.getFolderById(CV_FOLDER_ID);
-  // sort oldest-first so the newest email naturally supersedes earlier ones
-  threads.sort(function(a,b){ return a.getMessages()[0].getDate() - b.getMessages()[0].getDate(); });
+  var q = 'newer_than:400d to:internship.cbc@gmail.com -label:Status/New -label:Status/Needs-fix -label:Status/Superseded';
+  var start = Date.now();
+  var quota = MailApp.getRemainingDailyQuota();   // consumer Gmail ~100/day
+  var reserve = 5;                                // keep a few in hand
 
-  threads.forEach(function(th){
-    var msg = th.getMessages()[th.getMessages().length-1];   // latest message in the thread
-    var subject = msg.getSubject() || "";
-    var p = parseApplication(subject + "  " + firstLine(msg));
-    if(!p){ label(th,"Status/Needs-fix"); sendNeedsFix(msg); return; }
+  // Process in batches until the inbox is clear or we near the 6-min / time limit.
+  while(Date.now() - start < 280000){             // stop ~4.5 min in, safely under the cap
+    var threads = GmailApp.search(q, 0, 100);
+    if(!threads.length) break;
+    threads.sort(function(a,b){ return a.getMessages()[0].getDate() - b.getMessages()[0].getDate(); });
 
-    var email = cleanEmail(msg.getFrom());
-    var key   = email.toLowerCase()+"|"+p.track+"|"+p.month+"|"+p.year;
+    for(var i=0;i<threads.length;i++){
+      var th = threads[i];
+      var msg = th.getMessages()[th.getMessages().length-1];
+      var p = parseApplication((msg.getSubject()||"") + "  " + firstLine(msg));
 
-    // ALWAYS apply the month label to the thread first (so reruns after a
-    // label reset re-file every past mail), then handle the sheet row.
-    applyLabels(th, p);
+      if(!p){
+        label(th,"Status/Needs-fix");
+        var nfKey = "nf|" + cleanEmail(msg.getFrom()).toLowerCase();
+        if(quota > reserve && !alreadyAckedKey(nfKey)){ sendNeedsFix(msg); recordAckKey(nfKey); quota--; }
+        continue;
+      }
 
-    var existing = findRowByKey(sheet, key);
-    if(existing && existing.date > msg.getDate().getTime()){
-      // a newer email from this applicant for the same month already logged
-      label(th,"Status/Superseded"); return;
+      var email = cleanEmail(msg.getFrom());
+      var key   = email.toLowerCase()+"|"+p.track+"|"+p.month+"|"+p.year;
+
+      // ALWAYS label first, so reruns re-file every past mail (needs no quota)
+      applyLabels(th, p);
+
+      var existing = findRowByKey(sheet, key);
+      if(existing && existing.date > msg.getDate().getTime()){ label(th,"Status/Superseded"); continue; }
+
+      var files = classifyAndSave(msg, folder, senderName(msg), p);
+      var bodyPdf = saveBodyPdf(msg, folder, senderName(msg), p);
+      var row = [new Date(msg.getDate()), p.track, p.month, p.year, senderName(msg), email,
+        files.cv, files.cover, files.nda, bodyPdf, files.other, "New", key];
+      if(existing){ writeRow(sheet, existing.rowIndex, row); } else { sheet.appendRow(row); }
+
+      label(th,"Status/New");
+      if(quota > reserve && !alreadyAcked(email, p)){ sendAck(msg, p); recordAck(email, p); quota--; }
     }
-
-    // save attachments (fuzzy classified) + the email body as a PDF
-    var files = classifyAndSave(msg, folder, senderName(msg), p);
-    var bodyPdf = saveBodyPdf(msg, folder, senderName(msg), p);
-
-    var row = [new Date(msg.getDate()), p.track, p.month, p.year, senderName(msg), email,
-      files.cv, files.cover, files.nda, bodyPdf, files.other, "New", key];
-    if(existing){ writeRow(sheet, existing.rowIndex, row); }   // supersede older
-    else { sheet.appendRow(row); }
-
-    label(th,"Status/New");
-    if(!alreadyAcked(email, p)){ sendAck(msg, p); recordAck(email, p); }
-  });
+  }
 }
 
 /* ---------- subject / body parsing ---------- */
@@ -1547,13 +1553,14 @@ function ackSheet(){
   return sh;
 }
 function ackKey(email, p){ return String(email).toLowerCase()+"|"+p.track+"|"+p.month+"|"+p.year; }
-function alreadyAcked(email, p){
-  var key = ackKey(email, p);
+function alreadyAcked(email, p){ return alreadyAckedKey(ackKey(email, p)); }
+function recordAck(email, p){ recordAckKey(ackKey(email, p)); }
+function alreadyAckedKey(key){
   var vals = ackSheet().getRange("A:A").getValues();
   for(var i=0;i<vals.length;i++){ if(vals[i][0]===key) return true; }
   return false;
 }
-function recordAck(email, p){ ackSheet().appendRow([ackKey(email, p)]); }
+function recordAckKey(key){ ackSheet().appendRow([key]); }
 function sendNeedsFix(msg){
   GmailApp.sendEmail(cleanEmail(msg.getFrom()), "A quick fix needed on your application — Chambers of Bharat Chugh",
     "Dear Applicant,\n\nWe could not read the month you are applying for from your email. Please resend with the "+
