@@ -79,6 +79,9 @@ body{background:var(--color-bg);color:var(--color-text);transition:background .2
         <h3 style="font-size:22px;color:var(--color-text);line-height:1.1;margin:1px 0 0">{{ pageTitle }}</h3>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+        <div style="display:flex;background:var(--color-surface);border:1px solid var(--color-divider);border-radius:var(--radius-md);padding:2px;gap:2px">
+          <sc-for list="{{ trackTabs }}" as="t" hint-placeholder-count="3"><button onClick="{{ t.go }}" style="{{ t.style }}">{{ t.label }}</button></sc-for>
+        </div>
         <label style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:color-mix(in srgb,var(--color-text) 55%,transparent);font-weight:600">Cohort</label>
         <select class="input" value="{{ activeCohortId }}" onChange="{{ onCohortChange }}" style="width:auto;min-width:150px;font-weight:600">
           <sc-for list="{{ cohortOptions }}" as="c" hint-placeholder-count="3">
@@ -219,9 +222,6 @@ body{background:var(--color-bg);color:var(--color-text);transition:background .2
             <select class="input" style="width:auto;min-width:96px" value="{{ fMode }}" onChange="{{ onFMode }}">
               <option value="">All modes</option><option value="offline">Offline</option><option value="online">Online</option>
             </select>
-            <select class="input" style="width:auto;min-width:108px" value="{{ fTrack }}" onChange="{{ onFTrack }}">
-              <option value="">All tracks</option><option value="intern">Internship</option><option value="associate">Associate</option>
-            </select>
             <select class="input" style="width:auto;min-width:100px" value="{{ fSource }}" onChange="{{ onFSource }}">
               <sc-for list="{{ sourceFilterOpts }}" as="o" hint-placeholder-count="5"><option value="{{ o.v }}">{{ o.l }}</option></sc-for>
             </select>
@@ -245,6 +245,7 @@ body{background:var(--color-bg);color:var(--color-text);transition:background .2
                 <option value="">Move to stage…</option>
                 <sc-for list="{{ stageMoveOpts }}" as="o" hint-placeholder-count="5"><option value="{{ o.v }}">{{ o.l }}</option></sc-for>
               </select>
+              <button class="btn btn-secondary" onClick="{{ bulkFav }}" style="font-size:12px;padding:6px 11px;color:var(--warn);border-color:color-mix(in srgb,var(--warn) 50%,transparent)"><i class="ph ph-star"></i> Star</button>
               <button class="btn btn-secondary" onClick="{{ bulkReject }}" style="font-size:12px;padding:6px 11px"><i class="ph ph-x-circle"></i> Reject</button>
               <button class="btn btn-secondary" onClick="{{ bulkExport }}" style="font-size:12px;padding:6px 11px"><i class="ph ph-export"></i> Export</button>
               <button class="btn btn-secondary" onClick="{{ bulkPurge }}" style="font-size:12px;padding:6px 11px;color:var(--warn);border-color:color-mix(in srgb,var(--warn) 50%,transparent)" title="Delete Drive files for selected rejected candidates"><i class="ph ph-broom"></i> Purge files</button>
@@ -264,7 +265,7 @@ body{background:var(--color-bg);color:var(--color-text);transition:background .2
                   <sc-for list="{{ pipelineRows }}" as="r" hint-placeholder-count="6">
                     <tr onClick="{{ r.onOpen }}" style="cursor:pointer">
                       <td style="padding-left:var(--space-4)"><span onClick="{{ r.onToggle }}" style="{{ r.checkStyle }}">{{ r.checkMark }}</span></td>
-                      <td><div style="font-weight:600;font-size:13.5px">{{ r.name }}</div><div style="font-size:11px;color:color-mix(in srgb,var(--color-text) 45%,transparent)">{{ r.email }}</div></td>
+                      <td><div style="display:flex;align-items:center;gap:6px"><i class="ph ph-star-fill" onClick="{{ r.onFav }}" title="Favourite" style="color:var(--warn);font-size:13px;cursor:pointer;{{ r.favMark }}"></i><div><div style="font-weight:600;font-size:13.5px">{{ r.name }}</div><div style="font-size:11px;color:color-mix(in srgb,var(--color-text) 45%,transparent)">{{ r.email }}</div></div></div></td>
                       <td><span style="{{ r.modeStyle }}">{{ r.modeLabel }}</span></td>
                       <td><div style="font-size:12.5px">{{ r.year }}</div><div style="font-size:11px;color:color-mix(in srgb,var(--color-text) 50%,transparent)">{{ r.college }}</div></td>
                       <td><div style="font-size:12.5px">{{ r.source }}</div><div style="font-size:11px;color:color-mix(in srgb,var(--color-text) 50%,transparent)">{{ r.sourceSub }}</div></td>
@@ -293,6 +294,7 @@ body{background:var(--color-bg);color:var(--color-text);transition:background .2
                 <div style="font-family:var(--font-heading);font-size:17px;font-weight:600">{{ sel.name }}</div>
                 <div style="font-size:11px;color:color-mix(in srgb,var(--color-text) 50%,transparent)">Score {{ sel.score }} · {{ sel.stageLabel }}</div>
               </div>
+              <button class="btn btn-ghost" onClick="{{ sel.onFav }}" title="Mark as potential future Counsel" style="{{ sel.favStyle }}"><i class="ph ph-star{{ sel.favFill }}" style="font-size:18px"></i></button>
               <button class="btn btn-ghost" onClick="{{ closeCand }}"><i class="ph ph-x" style="font-size:18px"></i></button>
             </div>
 
@@ -316,16 +318,16 @@ body{background:var(--color-bg);color:var(--color-text);transition:background .2
                 <div style="font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:color-mix(in srgb,var(--color-text) 55%,transparent);font-weight:700;margin-bottom:10px"><i class="ph ph-folder-open"></i> Documents</div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-3)">
                   <div class="field"><label>CV / Résumé</label>
-                    <div style="display:flex;gap:6px"><input class="input" placeholder="Drive link" value="{{ sel.cvUrl }}" onInput="{{ sel.onCv }}"><a class="btn btn-secondary" href="{{ sel.cvHref }}" target="_blank" style="{{ sel.cvBtn }}"><i class="ph ph-arrow-square-out"></i></a></div>
+                    <div style="display:flex;gap:6px"><input class="input" placeholder="Drive link" value="{{ sel.cvUrl }}" onInput="{{ sel.onCv }}"><button class="btn btn-secondary" onClick="{{ sel.uploadCv }}" title="Upload to Drive" style="padding:0 10px"><i class="ph ph-upload-simple"></i></button><a class="btn btn-secondary" href="{{ sel.cvHref }}" target="_blank" style="{{ sel.cvBtn }}"><i class="ph ph-arrow-square-out"></i></a></div>
                   </div>
                   <div class="field"><label>Cover letter</label>
-                    <div style="display:flex;gap:6px"><input class="input" placeholder="Drive link" value="{{ sel.clUrl }}" onInput="{{ sel.onCl }}"><a class="btn btn-secondary" href="{{ sel.clHref }}" target="_blank" style="{{ sel.clBtn }}"><i class="ph ph-arrow-square-out"></i></a></div>
+                    <div style="display:flex;gap:6px"><input class="input" placeholder="Drive link" value="{{ sel.clUrl }}" onInput="{{ sel.onCl }}"><button class="btn btn-secondary" onClick="{{ sel.uploadCover }}" title="Upload to Drive" style="padding:0 10px"><i class="ph ph-upload-simple"></i></button><a class="btn btn-secondary" href="{{ sel.clHref }}" target="_blank" style="{{ sel.clBtn }}"><i class="ph ph-arrow-square-out"></i></a></div>
                   </div>
                   <div class="field"><label>Email as PDF <span class="text-muted" style="text-transform:none;letter-spacing:0">(auto-saved)</span></label>
                     <div style="display:flex;gap:6px"><input class="input" placeholder="Drive link" value="{{ sel.emailPdfUrl }}" onInput="{{ sel.onEmailPdf }}"><a class="btn btn-secondary" href="{{ sel.emailPdfHref }}" target="_blank" style="{{ sel.emailPdfBtn }}"><i class="ph ph-arrow-square-out"></i></a></div>
                   </div>
                   <div class="field"><label>Other attachment</label>
-                    <div style="display:flex;gap:6px"><input class="input" placeholder="Drive link" value="{{ sel.otherUrl }}" onInput="{{ sel.onOther }}"><a class="btn btn-secondary" href="{{ sel.otherHref }}" target="_blank" style="{{ sel.otherBtn }}"><i class="ph ph-arrow-square-out"></i></a></div>
+                    <div style="display:flex;gap:6px"><input class="input" placeholder="Drive link" value="{{ sel.otherUrl }}" onInput="{{ sel.onOther }}"><button class="btn btn-secondary" onClick="{{ sel.uploadOther }}" title="Upload to Drive" style="padding:0 10px"><i class="ph ph-upload-simple"></i></button><a class="btn btn-secondary" href="{{ sel.otherHref }}" target="_blank" style="{{ sel.otherBtn }}"><i class="ph ph-arrow-square-out"></i></a></div>
                   </div>
                 </div>
               </div>
@@ -337,7 +339,7 @@ body{background:var(--color-bg);color:var(--color-text);transition:background .2
                     <span style="{{ sel.ndaBadgeStyle }}">{{ sel.ndaBadge }}</span>
                   </div>
                   <div class="field" style="margin-bottom:var(--space-3)"><label>Signed NDA e-copy (Drive link)</label>
-                    <div style="display:flex;gap:6px"><input class="input" placeholder="Drive link to signed scan" value="{{ sel.ndaUrl }}" onInput="{{ sel.onNda }}"><a class="btn btn-secondary" href="{{ sel.ndaHref }}" target="_blank" style="{{ sel.ndaBtn }}"><i class="ph ph-arrow-square-out"></i></a></div>
+                    <div style="display:flex;gap:6px"><input class="input" placeholder="Drive link to signed scan" value="{{ sel.ndaUrl }}" onInput="{{ sel.onNda }}"><button class="btn btn-secondary" onClick="{{ sel.uploadNda }}" title="Upload to Drive" style="padding:0 10px"><i class="ph ph-upload-simple"></i></button><a class="btn btn-secondary" href="{{ sel.ndaHref }}" target="_blank" style="{{ sel.ndaBtn }}"><i class="ph ph-arrow-square-out"></i></a></div>
                   </div>
                   <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
                     <sc-for list="{{ sel.ndaStatusOpts }}" as="o" hint-placeholder-count="3"><button class="btn" onClick="{{ o.onClick }}" style="{{ o.style }}">{{ o.label }}</button></sc-for>
@@ -369,6 +371,22 @@ body{background:var(--color-bg);color:var(--color-text);transition:background .2
               </div>
 
               <div class="field" style="margin-bottom:var(--space-4)"><label>Notes</label><textarea class="input" placeholder="Interview pointers, observations…" value="{{ sel.notes }}" onInput="{{ sel.onNotes }}"></textarea></div>
+
+              <div style="background:var(--color-bg);border-radius:var(--radius-md);padding:var(--space-4) var(--space-6);margin-bottom:var(--space-4)">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><i class="ph ph-scales" style="color:var(--color-accent)"></i><span style="font-size:12.5px;font-weight:700">Counsel watch — approver notes</span></div>
+                <p class="text-muted" style="font-size:11px;margin:0 0 10px">Star the candidate above to flag a potential future Counsel. Approvers and the team can add dated notes here.</p>
+                <sc-if value="{{ sel.hasApprNotes }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px">
+                    <sc-for list="{{ sel.apprNotes }}" as="n" hint-placeholder-count="0">
+                      <div style="display:flex;gap:8px;align-items:flex-start;background:var(--color-surface);border:1px solid var(--color-divider);border-radius:var(--radius-sm);padding:7px 10px">
+                        <div style="flex:1"><div style="font-size:12.5px">{{ n.text }}</div><div style="font-size:10px;color:color-mix(in srgb,var(--color-text) 45%,transparent);margin-top:2px">{{ n.meta }}</div></div>
+                        <button class="btn btn-ghost" onClick="{{ n.onDelete }}" style="padding:0 4px;color:var(--danger);font-size:12px"><i class="ph ph-x"></i></button>
+                      </div>
+                    </sc-for>
+                  </div>
+                </sc-if>
+                <div style="display:flex;gap:6px"><input class="input" placeholder="Add a note about this candidate…" value="{{ apprNoteDraft }}" onInput="{{ onApprNoteDraft }}" onKeyDown="{{ sel.onApprNoteKey }}" style="font-size:12.5px"><button class="btn btn-secondary" onClick="{{ sel.onAddApprNote }}" style="white-space:nowrap"><i class="ph ph-plus"></i> Add</button></div>
+              </div>
 
               <h5 style="margin:0 0 var(--space-2)">Decision</h5>
               <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:var(--space-3)">
@@ -477,6 +495,11 @@ body{background:var(--color-bg);color:var(--color-text);transition:background .2
                 <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-top:var(--space-2);border-top:1px solid var(--color-divider)">
                   <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;cursor:pointer" onClick="{{ toggleAutoSync }}"><span style="{{ autoSyncStyle }}"><i class="ph ph-check" style="font-size:11px"></i></span> Auto-sync every minute</label>
                   <div style="display:flex;align-items:center;gap:10px"><span class="text-muted" style="font-size:11.5px">{{ lastSyncLabel }}</span><button class="btn btn-primary" onClick="{{ doSyncNow }}" disabled="{{ syncingNow }}" style="white-space:nowrap"><i class="ph ph-arrows-clockwise"></i> Sync now</button></div>
+                </div>
+                <div style="margin-top:var(--space-3);padding-top:var(--space-3);border-top:1px solid var(--color-divider)">
+                  <div style="font-size:12px;font-weight:600;margin-bottom:4px"><i class="ph ph-link"></i> Onboard the team</div>
+                  <p class="text-muted" style="font-size:11.5px;margin:0 0 8px">Teammates (Admins, approvers) don't see this tab. Copy this one-time invite link and send it to each of them — opening it on their device configures the connection automatically, so they sync the same data. They then sign in with their own name and password.</p>
+                  <button class="btn btn-secondary" onClick="{{ copyInviteLink }}"><i class="ph ph-copy"></i> Copy team invite link</button>
                 </div>
               </div>
               <sc-if value="{{ hasSyncError }}" hint-placeholder-val="{{ false }}">
@@ -673,7 +696,7 @@ body{background:var(--color-bg);color:var(--color-text);transition:background .2
                 <tbody>
                   <sc-for list="{{ apRows }}" as="r" hint-placeholder-count="4">
                     <tr>
-                      <td style="padding-left:var(--space-4)"><div style="font-weight:600;font-size:13px">{{ r.name }}</div><div style="font-size:11px;color:color-mix(in srgb,var(--color-text) 45%,transparent)">{{ r.college }} · {{ r.year }}</div></td>
+                      <td style="padding-left:var(--space-4)"><div style="display:flex;align-items:center;gap:6px"><button class="btn btn-ghost" onClick="{{ r.onOpen }}" title="View full details & documents" style="padding:2px 5px;color:var(--color-accent)"><i class="ph ph-eye"></i></button><div><div style="font-weight:600;font-size:13px">{{ r.name }}</div><div style="font-size:11px;color:color-mix(in srgb,var(--color-text) 45%,transparent)">{{ r.college }} · {{ r.year }}</div></div></div></td>
                       <td><span style="{{ r.modeStyle }}">{{ r.modeLabel }}</span></td>
                       <td><span style="font-family:var(--font-heading);font-size:15px;color:{{ r.scoreTone }}">{{ r.score }}</span></td>
                       <td><button class="btn" onClick="{{ r.onMayank }}" style="{{ r.mayankStyle }}" disabled="{{ r.mayankDisabled }}">{{ r.mayankLabel }}</button></td>
@@ -715,14 +738,38 @@ body{background:var(--color-bg);color:var(--color-text);transition:background .2
             <div style="flex:1;min-width:180px"><p class="text-muted" style="margin:0;font-size:12.5px">{{ ivIntro }}</p></div>
             <sc-if value="{{ canExport }}" hint-placeholder-val="{{ true }}"><button class="btn btn-secondary" onClick="{{ ivExport }}" style="font-size:12px"><i class="ph ph-file-xls"></i> Export schedule</button></sc-if>
           </div>
+
+          <div class="card elev-sm" style="padding:var(--space-4) var(--space-6);margin-bottom:var(--space-3);gap:var(--space-3)">
+            <div style="display:flex;align-items:center;gap:8px"><i class="ph ph-calendar-plus" style="color:var(--color-accent)"></i><span style="font-weight:600;font-size:13px">Bulk schedule</span><span class="text-muted" style="font-size:11.5px">— select candidates below, then auto-fill back-to-back slots.</span></div>
+            <div style="display:flex;flex-wrap:wrap;gap:var(--space-3);align-items:flex-end">
+              <div class="field" style="width:150px"><label>Date</label><input class="input" type="date" value="{{ bsDate }}" onInput="{{ onBsDate }}"></div>
+              <div class="field" style="width:110px"><label>Start</label><input class="input" type="time" value="{{ bsStart }}" onInput="{{ onBsStart }}"></div>
+              <div class="field" style="width:110px"><label>End</label><input class="input" type="time" value="{{ bsEnd }}" onInput="{{ onBsEnd }}"></div>
+              <div class="field" style="width:96px"><label>Mins each</label><input class="input" type="number" min="1" value="{{ bsMins }}" onInput="{{ onBsMins }}"></div>
+              <div class="field" style="width:150px"><label>Interviewer</label><input class="input" list="co-interviewers" placeholder="Name" value="{{ bsBy }}" onInput="{{ onBsBy }}"></div>
+              <button class="btn btn-primary" onClick="{{ applyBulkSchedule }}" style="white-space:nowrap"><i class="ph ph-magic-wand"></i> Assign slots ({{ bsSelCount }})</button>
+            </div>
+            <div class="text-muted" style="font-size:11px">{{ bsHint }}</div>
+          </div>
+
+          <sc-if value="{{ ivBulkOn }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 14px;background:color-mix(in srgb,var(--color-accent) 12%,transparent);border:1px solid var(--color-accent);border-radius:var(--radius-md);margin-bottom:var(--space-3)">
+              <span style="font-size:12.5px;font-weight:700;color:var(--color-accent)">{{ ivBulkCount }} selected</span>
+              <div style="width:1px;height:18px;background:var(--color-divider)"></div>
+              <button class="btn btn-secondary" onClick="{{ ivBulkMail }}" style="font-size:12px;padding:6px 11px"><i class="ph ph-paper-plane-tilt"></i> Send interview-call email to all</button>
+              <button class="btn btn-ghost" onClick="{{ ivClearSel }}" style="margin-left:auto;font-size:12px">Clear</button>
+            </div>
+          </sc-if>
+
           <div class="card elev-sm" style="padding:0;overflow:hidden">
             <div style="overflow-x:auto">
-              <table class="table" style="min-width:820px">
-                <thead><tr><th style="padding-left:var(--space-4)">Candidate</th><th>Mode</th><th>Date</th><th>Time</th><th>Interviewer</th><th>Link / Room</th><th>Result</th><th></th></tr></thead>
+              <table class="table" style="min-width:860px">
+                <thead><tr><th style="width:34px;padding-left:var(--space-4)"><span onClick="{{ ivToggleAll }}" style="{{ ivSelAllStyle }}" title="Select all">{{ ivSelAllMark }}</span></th><th>Candidate</th><th>Mode</th><th>Date</th><th>Time</th><th>Interviewer</th><th>Link / Room</th><th>Result</th><th></th></tr></thead>
                 <tbody>
                   <sc-for list="{{ ivRows }}" as="r" hint-placeholder-count="4">
                     <tr>
-                      <td style="padding-left:var(--space-4)"><div style="font-weight:600;font-size:13px">{{ r.name }}</div><div style="font-size:11px;color:color-mix(in srgb,var(--color-text) 45%,transparent)">{{ r.college }}</div></td>
+                      <td style="padding-left:var(--space-4)"><span onClick="{{ r.onToggle }}" style="{{ r.checkStyle }}">{{ r.checkMark }}</span></td>
+                      <td><div style="font-weight:600;font-size:13px">{{ r.name }}</div><div style="font-size:11px;color:color-mix(in srgb,var(--color-text) 45%,transparent)">{{ r.college }}</div></td>
                       <td><span style="{{ r.modeStyle }}">{{ r.modeLabel }}</span></td>
                       <td style="min-width:140px"><input class="input" type="date" value="{{ r.date }}" onInput="{{ r.onDate }}" style="padding:6px 8px;font-size:12px"></td>
                       <td style="min-width:110px"><input class="input" type="time" value="{{ r.slot }}" onInput="{{ r.onSlot }}" style="padding:6px 8px;font-size:12px"></td>
@@ -737,7 +784,7 @@ body{background:var(--color-bg);color:var(--color-text);transition:background .2
             </div>
             <sc-if value="{{ ivEmpty }}" hint-placeholder-val="{{ true }}"><div class="text-muted" style="padding:34px;text-align:center;font-size:13px">No candidates are at the interview stage for this cohort. Shortlist candidates in the Pipeline to see them here.</div></sc-if>
           </div>
-          <div class="text-muted" style="font-size:11.5px;margin-top:10px">Setting a date, time and interviewer enables the send button — it emails the candidate their slot (Phase-3 shortlist template) and, where you&rsquo;ve connected the endpoint, adds a Google Calendar invite. Mark the result to feed the Approvals tab.</div>
+          <div class="text-muted" style="font-size:11.5px;margin-top:10px">Setting a date and time enables the send button — it emails the candidate their slot (Phase-3 shortlist template). Use bulk schedule to divide a window into equal back-to-back slots across the selected candidates, then send all the emails at once. Mark the result to feed the Approvals tab.</div>
         </div>
       </sc-if>
       <datalist id="co-interviewers"><sc-for list="{{ interviewerOpts }}" as="c" hint-placeholder-count="3"><option value="{{ c }}"></option></sc-for></datalist>
@@ -952,13 +999,32 @@ class Component extends DCLogic {
     toast:'', search:'', fStage:'', fMode:'', fSource:'', fTrack:'', sortKey:'score', sel:[], selId:'',
     showNewCohort:false, ncMonth:'January', ncYear:2027, pbTab:'templates',
     showBypass:false, bypassReason:'', bypassTarget:null, cohYear:'',
-    teamTab:'people', transferTo:'', anScope:'this', syncing:false, syncMsg:'', theme:'dark' };
+    teamTab:'people', transferTo:'', anScope:'this', syncing:false, syncMsg:'', theme:'dark',
+    ivSel:[], bsDate:'', bsStart:'17:00', bsEnd:'18:00', bsMins:5, bsBy:'', trackScope:'all', apprNoteDraft:'' };
 
   componentDidMount(){ this.load();
     try{ const t=localStorage.getItem('cohort_theme'); if(t) this.state.theme=t; }catch(e){}
+    this.applyConnectLink();
     this.setState({ rev:this.state.rev+1 });
     this._syncTimer=setInterval(()=>{ if(this.me && this.data && this.data.settings && this.data.settings.autoSync && this.apiUrl()) this.syncNow(true); }, 60000);
   }
+  applyConnectLink(){
+    // A device gets the endpoint + token from a shareable link (…/#connect=<payload>)
+    // so teammates who aren't Super Admin can still connect without the Team tab.
+    try{
+      const h=(location.hash||''); const m=h.match(/connect=([^&]+)/);
+      if(!m) return;
+      const parts=decodeURIComponent(escape(atob(decodeURIComponent(m[1])))).split('\n');
+      if(parts[0]){ this.data.settings.endpoint=parts[0]; this.data.settings.apiToken=parts[1]||''; this.persist();
+        this._justConnected=true; }
+      history.replaceState(null,'',location.pathname+location.search);
+    }catch(e){}
+  }
+  teamInviteLink(){
+    const payload=btoa(unescape(encodeURIComponent((this.data.settings.endpoint||'')+'\n'+(this.data.settings.apiToken||''))));
+    return location.origin+location.pathname+'#connect='+encodeURIComponent(payload);
+  }
+  copyInviteLink(){ if(!this.apiUrl()){ this.flash('Set the endpoint first'); return; } this.copyTxt(this.teamInviteLink()); this.flash('Team invite link copied — send it to each teammate'); }
   componentWillUnmount(){ clearInterval(this._syncTimer); }
   toggleTheme(){ const t=this.state.theme==='dark'?'light':'dark'; try{ localStorage.setItem('cohort_theme',t); }catch(e){} this.setState({theme:t}); }
   logoSrc(){ return (this.data&&this.data.settings&&this.data.settings.logoUrl)||''; }
@@ -1070,7 +1136,7 @@ class Component extends DCLogic {
       stage, outcome:outcome||'', review:rev||{ind:null,story:null,pass:null,show:null,orig:null},
       flags:{template:false,sirMadam:false}, interview:{date:'',slot:'',mode:mode,link:'',by:'',result:'',notes:''},
       appr:{mayank:'',bharat:'',bypass:null}, ext:{req:false,appr:''}, stip:{grant:false},
-      nda:{status:'pending',remindedAt:0}, notes:'', hist:[], createdAt:Date.now() };
+      nda:{status:'pending',remindedAt:0}, fav:false, apprNotes:[], notes:'', hist:[], createdAt:Date.now() };
   }
 
   get me(){ return (this.data&&this.data.users||[]).find(u=>u.id===this.state.authUserId)||null; }
@@ -1086,6 +1152,7 @@ class Component extends DCLogic {
     if(u.pass!==this.hash(this.state.loginPw||'')){ this.setState({loginError:'Incorrect password.'}); return; }
     if(u.mustReset){ this.setState({setMode:true, setPwUserId:u.id, loginError:'', setPw1:'', setPw2:''}); return; }
     this.setState({authUserId:u.id, loginError:'', loginPw:''});
+    if(this.apiUrl()) setTimeout(()=>this.syncNow(true), 200);
   }
   doSetPw(){
     const p1=this.state.setPw1||'', p2=this.state.setPw2||'';
@@ -1098,7 +1165,8 @@ class Component extends DCLogic {
   logout(){ this.setState({authUserId:'', loginPw:'', loginError:'', page:'cohorts'}); }
 
   get cohort(){ return (this.data&&this.data.cohorts||[]).find(c=>c.id===this.state.activeCohortId)||null; }
-  cohCands(id){ id=id||this.state.activeCohortId; return (this.data&&this.data.candidates||[]).filter(c=>c.cohortId===id); }
+  cohCands(id){ id=id||this.state.activeCohortId; const ts=this.state.trackScope||'all';
+    return (this.data&&this.data.candidates||[]).filter(c=>c.cohortId===id && (ts==='all' || (c.track||'intern')===ts)); }
   score(c){
     let s=0; const yr=(c.year||'').toLowerCase();
     const eligible = c.program==='5yr' ? /(3rd|4th|5th|third|fourth|fifth|completed)/.test(yr) : /(2nd|3rd|second|third|completed)/.test(yr);
@@ -1171,7 +1239,7 @@ class Component extends DCLogic {
     let list=this.cohCands().slice();
     const q=(this.state.search||'').toLowerCase().trim();
     if(q) list=list.filter(c=>[c.name,c.college,c.city,c.email,c.referredBy].some(v=>(v||'').toLowerCase().includes(q)));
-    if(this.state.fStage){ if(this.state.fStage==='rejected') list=list.filter(c=>c.outcome==='rejected'); else list=list.filter(c=>c.stage===this.state.fStage&&c.outcome!=='rejected'); }
+    if(this.state.fStage){ if(this.state.fStage==='rejected') list=list.filter(c=>c.outcome==='rejected'); else if(this.state.fStage==='fav') list=list.filter(c=>c.fav); else list=list.filter(c=>c.stage===this.state.fStage&&c.outcome!=='rejected'); }
     if(this.state.fMode) list=list.filter(c=>c.mode===this.state.fMode);
     if(this.state.fSource) list=list.filter(c=>c.source===this.state.fSource);
     if(this.state.fTrack) list=list.filter(c=>(c.track||'intern')===this.state.fTrack);
@@ -1188,6 +1256,9 @@ class Component extends DCLogic {
   setReview(id,dim,v){ const c=this.data.candidates.find(x=>x.id===id); if(!c)return; c.review=c.review||{}; c.review[dim]=(c.review[dim]===v?null:v); c.updatedAt=Date.now(); this.persist(); this.setState({rev:this.state.rev+1}); }
   toggleFlag(id,f){ const c=this.data.candidates.find(x=>x.id===id); if(!c)return; c.flags=c.flags||{}; c.flags[f]=!c.flags[f]; c.updatedAt=Date.now(); this.persist(); this.setState({rev:this.state.rev+1}); }
   setNdaStatus(id,status){ const c=this.data.candidates.find(x=>x.id===id); if(!c)return; c.nda=c.nda||{status:'pending',remindedAt:0}; c.nda.status=status; this.logHist(c,'NDA: '+status); c.updatedAt=Date.now(); this.persist(); this.setState({rev:this.state.rev+1}); this.flash('NDA marked '+status); }
+  toggleFav(id){ const c=this.data.candidates.find(x=>x.id===id); if(!c)return; c.fav=!c.fav; this.logHist(c,c.fav?'Starred as potential Counsel':'Unstarred'); c.updatedAt=Date.now(); this.persist(); this.setState({rev:this.state.rev+1}); this.flash(c.fav?'Marked as favourite':'Removed favourite'); if(this.apiUrl())this.syncNow(true); }
+  addApprNote(id,text){ text=(text||'').trim(); if(!text)return; const c=this.data.candidates.find(x=>x.id===id); if(!c)return; c.apprNotes=c.apprNotes||[]; c.apprNotes.push({by:(this.me||{}).name||'', ts:Date.now(), text}); c.updatedAt=Date.now(); this.persist(); this.setState({rev:this.state.rev+1}); this.flash('Note added'); if(this.apiUrl())this.syncNow(true); }
+  delApprNote(id,idx){ const c=this.data.candidates.find(x=>x.id===id); if(!c||!c.apprNotes)return; c.apprNotes.splice(idx,1); c.updatedAt=Date.now(); this.persist(); this.setState({rev:this.state.rev+1}); }
   remindNda(id){ const c=this.data.candidates.find(x=>x.id===id); if(!c)return; if(!c.email){this.flash('No email on file');return;}
     c.nda=c.nda||{status:'pending',remindedAt:0}; c.nda.remindedAt=Date.now(); this.logHist(c,'NDA reminder sent'); c.updatedAt=Date.now(); this.persist(); this.setState({rev:this.state.rev+1});
     const coh=this.data.cohorts.find(x=>x.id===c.cohortId)||{};
@@ -1202,8 +1273,30 @@ class Component extends DCLogic {
   bulkMove(stage){ const ids=this.state.sel||[]; ids.forEach(id=>{const c=this.data.candidates.find(x=>x.id===id); if(c){c.stage=stage; if(stage!=='rejected')c.outcome=''; this.logHist(c,'Bulk → '+stage);}}); this.persist(); this.flash('Moved '+ids.length); this.setState({sel:[],rev:this.state.rev+1}); }
   bulkReject(){ const ids=this.state.sel||[]; ids.forEach(id=>{const c=this.data.candidates.find(x=>x.id===id); if(c){c.outcome='rejected'; if(!c.rejectReason)c.rejectReason=this.data.savedOptions.rejectReasons[0]; this.logHist(c,'Bulk reject');}}); this.persist(); this.flash(ids.length+' rejected'); this.setState({sel:[],rev:this.state.rev+1}); }
   bulkDelete(){ const s=new Set(this.state.sel||[]); const n=s.size; s.forEach(id=>this.tombstone(id)); this.data.candidates=this.data.candidates.filter(x=>!s.has(x.id)); this.persist(); this.flash(n+' deleted'); this.setState({sel:[],rev:this.state.rev+1}); }
+  bulkFav(){ const s=new Set(this.state.sel||[]); const cands=this.data.candidates.filter(x=>s.has(x.id)); if(!cands.length)return; const anyOff=cands.some(c=>!c.fav); cands.forEach(c=>{c.fav=anyOff; c.updatedAt=Date.now(); this.logHist(c,anyOff?'Starred (bulk)':'Unstarred (bulk)');}); this.persist(); this.setState({rev:this.state.rev+1}); this.flash((anyOff?'Starred ':'Unstarred ')+cands.length); if(this.apiUrl())this.syncNow(true); }
   stageName(s){ return {applied:'Applied',shortlisted:'Shortlisted',interview:'Interview',final:'Finalist',joined:'Joined',rejected:'Rejected'}[s]||s; }
   addOption(kind,val){ val=(val||'').trim(); if(!val)return; const arr=this.data.savedOptions[kind]; if(arr&&!arr.includes(val)){arr.push(val); this.persist();} }
+  uploadCandidateFile(id, slot){
+    const slotField={cv:'cvUrl',cover:'clUrl',nda:'ndaUrl',other:'otherUrl'}[slot];
+    const inp=document.createElement('input'); inp.type='file'; inp.accept='.pdf,.doc,.docx,image/*';
+    inp.onchange=()=>{ const f=inp.files&&inp.files[0]; if(!f)return;
+      if(f.size>25*1024*1024){ this.flash('File is over 25 MB'); return; }
+      const c=this.data.candidates.find(x=>x.id===id); if(!c)return;
+      if(!this.apiUrl()){ this.flash('Connect the sync endpoint first to upload to Drive'); return; }
+      const r=new FileReader();
+      r.onload=()=>{ const b64=String(r.result).split(',')[1]||'';
+        this.flash('Uploading “'+f.name+'” to Drive…');
+        fetch(this.apiUrl(), {method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=utf-8'},
+          body:JSON.stringify({token:this.data.settings.apiToken||'', action:'uploadFile', id, slot, name:f.name, mime:f.type||'application/octet-stream', dataBase64:b64,
+            who:(c.name||'Candidate'), month:(this.data.cohorts.find(x=>x.id===c.cohortId)||{}).label||''}) })
+          .then(()=>{ this.logHist(c,'Uploaded '+slot+': '+f.name); c.updatedAt=Date.now(); this.persist();
+            this.flash('Uploaded — the Drive link will appear on the next sync (within a minute)'); setTimeout(()=>this.syncNow(true), 6000); })
+          .catch(()=>this.flash('Upload failed — check the endpoint'));
+      };
+      r.readAsDataURL(f);
+    };
+    inp.click();
+  }
   async purgeFiles(id){ const c=this.data.candidates.find(x=>x.id===id); if(!c)return;
     const urls=[c.cvUrl,c.clUrl,c.emailPdfUrl,c.otherUrl,c.ndaUrl].filter(Boolean);
     if(!urls.length){ this.flash('No Drive files to purge'); return; }
@@ -1258,6 +1351,7 @@ class Component extends DCLogic {
     const rows=this.pipelineFiltered(); const selSet=new Set(this.state.sel||[]);
     const pipelineRows=rows.map(c=>{ const sb=stageBadge(c); const on=selSet.has(c.id);
       return { id:c.id, name:c.name||'—', email:c.email||'', onOpen:()=>this.openCand(c.id), onToggle:(e)=>{this.stop(e);this.toggleSel(c.id);}, checkStyle:box(on), checkMark:on?'✓':'',
+        favMark:c.fav?'':'display:none', onFav:(e)=>{this.stop(e);this.toggleFav(c.id);},
         modeLabel:c.mode==='online'?'Online':'Offline', modeStyle:c.mode==='online'?pill('var(--color-accent-900)','var(--color-accent-200)'):pill('var(--color-neutral-800)','var(--color-neutral-100)'),
         year:c.year||'—', college:c.college||'—', source:c.source||'—', sourceSub:c.referredBy||'', score:this.score(c), scoreTone:scoreTone(this.score(c)), stageLabel:sb.l, stageStyle:sb.s }; });
     const ids=rows.map(r=>r.id); const allSel=ids.length&&ids.every(i=>selSet.has(i));
@@ -1279,7 +1373,11 @@ class Component extends DCLogic {
         showNda:(sel.stage==='final'||sel.stage==='joined'), ndaUrl:sel.ndaUrl||'', ndaHref:sel.ndaUrl||'#', ndaBtn:linkBtn(sel.ndaUrl),
         ndaBadge:nb[0], ndaBadgeStyle:'font-size:10px;font-weight:700;padding:2px 9px;border-radius:6px;background:color-mix(in srgb,'+nb[1]+' 18%,transparent);color:'+nb[1], ndaStatusOpts,
         ndaReminderNote: nda.remindedAt?('Last reminded '+this.fmtDate(nda.remindedAt)):'No reminder sent yet. Reminders go to the intern to send the signed NDA within a week.',
-        onNda:(e)=>this.updField(sel.id,'ndaUrl',e.target.value), onEmailPdf:(e)=>this.updField(sel.id,'emailPdfUrl',e.target.value), onOther:(e)=>this.updField(sel.id,'otherUrl',e.target.value), onRemindNda:()=>this.remindNda(sel.id),
+        onNda:(e)=>this.updField(sel.id,'ndaUrl',e.target.value), onEmailPdf:(e)=>this.updField(sel.id,'emailPdfUrl',e.target.value), onOther:(e)=>this.updField(sel.id,'otherUrl',e.target.value),
+        favFill:sel.fav?'-fill':'', favStyle:'padding:5px 7px;color:'+(sel.fav?'var(--warn)':'color-mix(in srgb,var(--color-text) 45%,transparent)'), onFav:()=>this.toggleFav(sel.id),
+        hasApprNotes:(sel.apprNotes||[]).length>0, apprNotes:(sel.apprNotes||[]).map((n,i)=>({text:n.text, meta:(n.by||'—')+' · '+this.fmtDate(n.ts), onDelete:()=>this.delApprNote(sel.id,i)})),
+        onAddApprNote:()=>{ this.addApprNote(sel.id,this.state.apprNoteDraft); this.setState({apprNoteDraft:''}); }, onApprNoteKey:(e)=>{ if(e.key==='Enter'){ this.addApprNote(sel.id,this.state.apprNoteDraft); this.setState({apprNoteDraft:''}); } },
+        uploadCv:()=>this.uploadCandidateFile(sel.id,'cv'), uploadCover:()=>this.uploadCandidateFile(sel.id,'cover'), uploadNda:()=>this.uploadCandidateFile(sel.id,'nda'), uploadOther:()=>this.uploadCandidateFile(sel.id,'other'), onRemindNda:()=>this.remindNda(sel.id),
         notes:sel.notes, rubric, reviewAvgLabel: avg?('avg '+avg.toFixed(1)+' / 5'):'not rated', flagTemplateStyle:fbox(sel.flags&&sel.flags.template), flagSirStyle:fbox(sel.flags&&sel.flags.sirMadam),
         isRejected:sel.outcome==='rejected', rejectReason:sel.rejectReason||'', actions:this.drawerActions(sel),
         onName:(e)=>this.updField(sel.id,'name',e.target.value), onEmail:(e)=>this.updField(sel.id,'email',e.target.value), onMode:(e)=>this.updField(sel.id,'mode',e.target.value), onTrack:(e)=>this.updField(sel.id,'track',e.target.value), onProgram:(e)=>this.updField(sel.id,'program',e.target.value), onYear:(e)=>this.updField(sel.id,'year',e.target.value), onCollege:(e)=>this.updField(sel.id,'college',e.target.value), onCity:(e)=>this.updField(sel.id,'city',e.target.value), onSource:(e)=>this.updField(sel.id,'source',e.target.value), onRef:(e)=>this.updField(sel.id,'referredBy',e.target.value), onCv:(e)=>this.updField(sel.id,'cvUrl',e.target.value), onCl:(e)=>this.updField(sel.id,'clUrl',e.target.value), onNotes:(e)=>this.updField(sel.id,'notes',e.target.value), onFlagTemplate:()=>this.toggleFlag(sel.id,'template'), onFlagSir:()=>this.toggleFlag(sel.id,'sirMadam'), onRejectReason:(e)=>this.updField(sel.id,'rejectReason',e.target.value), onDelete:()=>this.delCand(sel.id) };
@@ -1287,12 +1385,12 @@ class Component extends DCLogic {
     return {
       pagePipeline:this.state.page==='pipeline', search:this.state.search, onSearch:(e)=>this.onSearch(e),
       fStage:this.state.fStage||'', onFStage:(e)=>this.onFStage(e), fMode:this.state.fMode||'', onFMode:(e)=>this.onFMode(e), fSource:this.state.fSource||'', onFSource:(e)=>this.onFSource(e), fTrack:this.state.fTrack||'', onFTrack:(e)=>this.onFTrack(e), sortKey:this.state.sortKey||'score', onSort:(e)=>this.onSort(e),
-      stageFilterOpts:[{v:'',l:'All stages'},{v:'applied',l:'Applied'},{v:'shortlisted',l:'Shortlisted'},{v:'interview',l:'Interview'},{v:'final',l:'Finalist'},{v:'joined',l:'Joined'},{v:'rejected',l:'Rejected'}],
+      stageFilterOpts:[{v:'',l:'All stages'},{v:'fav',l:'★ Favourites'},{v:'applied',l:'Applied'},{v:'shortlisted',l:'Shortlisted'},{v:'interview',l:'Interview'},{v:'final',l:'Finalist'},{v:'joined',l:'Joined'},{v:'rejected',l:'Rejected'}],
       sourceFilterOpts:[{v:'',l:'All sources'}].concat((this.data.savedOptions.sources||[]).map(s=>({v:s,l:s}))),
       stageMoveOpts:[{v:'applied',l:'Applied'},{v:'shortlisted',l:'Shortlisted'},{v:'interview',l:'Interview'},{v:'final',l:'Finalist'},{v:'joined',l:'Joined'}],
       pipelineRows, pipelineEmpty:pipelineRows.length===0, canExport:this.can('export'), canAdd:this.can('add'),
       exportExcel:()=>this.exportExcel(), exportPDF:()=>this.exportPDF(), addCandidate:()=>this.addCandidate(),
-      bulkOn:(this.state.sel||[]).length>0, bulkCount:(this.state.sel||[]).length, onBulkMove:(e)=>{const v=e.target.value; e.target.value=''; if(v)this.bulkMove(v);}, bulkReject:()=>this.bulkReject(), bulkExport:()=>this.bulkExport(), bulkPurge:()=>this.bulkPurge(), bulkDelete:()=>this.bulkDelete(), clearSel:()=>this.clearSel(),
+      bulkOn:(this.state.sel||[]).length>0, bulkCount:(this.state.sel||[]).length, onBulkMove:(e)=>{const v=e.target.value; e.target.value=''; if(v)this.bulkMove(v);}, bulkReject:()=>this.bulkReject(), bulkFav:()=>this.bulkFav(), bulkExport:()=>this.bulkExport(), bulkPurge:()=>this.bulkPurge(), bulkDelete:()=>this.bulkDelete(), clearSel:()=>this.clearSel(),
       toggleSelAll:()=>this.toggleSelAll(), selAllStyle:box(allSel), selAllMark:allSel?'✓':'',
       selOpen:!!sel, sel:selVM, closeCand:()=>this.closeCand(), sourceOpts:(this.data.savedOptions.sources||[]).slice().sort(), rejectReasonOpts:this.data.savedOptions.rejectReasons||[], collegeOpts:(this.data.savedOptions.colleges||[]).slice().sort(), cityOpts:(this.data.savedOptions.cities||[]).slice().sort(), referrerOpts:(this.data.savedOptions.referrers||[]).slice().sort()
     };
@@ -1720,6 +1818,7 @@ function doPost(e){
     case "sendEmail":    sendEmail(body); return json({ok:true});
     case "updateStatus": setStatus(body.email, body.status); return json({ok:true});
     case "purgeFiles":   purgeFiles(body.urls); return json({ok:true});
+    case "uploadFile":   uploadFile(body); return json({ok:true});
     default: return json({error:"unknown action"});
   }
 }
@@ -1737,6 +1836,23 @@ function purgeFiles(urls){
   (urls||[]).forEach(function(u){
     try{ var m=String(u).match(/[-\w]{25,}/); if(m) DriveApp.getFileById(m[0]).setTrashed(true); }catch(e){}
   });
+}
+/* Save a file uploaded from the dashboard to Drive, then write its link into
+   the shared State against the candidate id + slot, so the next sync shows it. */
+function uploadFile(body){
+  var folder = DriveApp.getFolderById(CV_FOLDER_ID);
+  var bytes = Utilities.base64Decode(body.dataBase64||"");
+  var blob = Utilities.newBlob(bytes, body.mime||"application/octet-stream", body.name||"upload");
+  var nm = (body.who||"Candidate")+" - "+(body.month||"")+" - "+(body.slot||"file")+" - "+(body.name||"upload");
+  var f = folder.createFile(blob).setName(nm);
+  f.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  var url = f.getUrl();
+  var field = {cv:"cvUrl", cover:"clUrl", nda:"ndaUrl", other:"otherUrl"}[body.slot] || "otherUrl";
+  var raw = readState(); if(!raw) return;
+  var st; try{ st = JSON.parse(raw); }catch(e){ return; }
+  (st.candidates||[]).forEach(function(c){ if(c.id===body.id){ c[field]=url; c.updatedAt=Date.now(); } });
+  st.updatedAt = Date.now();
+  writeState(JSON.stringify(st), st.updatedAt);
 }
 
 function stateSheet(){ var ss=SpreadsheetApp.openById(SHEET_ID); return ss.getSheetByName(STATE_SHEET)||ss.insertSheet(STATE_SHEET); }
@@ -1824,7 +1940,7 @@ function json(o){ return ContentService.createTextOutput(JSON.stringify(o)).setM
         bharatLabel: bOn?'Approved':'Approve (opt.)', bharatStyle:btn(bOn,'var(--ok)'), bharatDisabled:!this.isSuper()&&!this.canApprove(4)||joined, onBharat:()=>this.setAppr(c.id,'bharat','ok'),
         statusLabel, statusStyle,
         bypassNote: bypassed?('Bypassed by '+a.bypass.by+' — '+a.bypass.reason):'', bypassNoteStyle: bypassed?'font-size:10px;color:var(--warn);margin-top:3px;max-width:200px':'display:none',
-        showConfirm:ready&&(this.can('edit')||this.isSuper()), onConfirm:()=>this.confirmFinal(c.id) };
+        showConfirm:ready&&(this.can('edit')||this.isSuper()), onConfirm:()=>this.confirmFinal(c.id), onOpen:()=>this.openCand(c.id) };
     });
     const tgt=(this.cohort||{}).targets||{offline:8,online:4};
     const confirmed=uniq.filter(c=>c.stage==='joined');
@@ -2051,7 +2167,7 @@ function json(o){ return ContentService.createTextOutput(JSON.stringify(o)).setM
       lastSyncLabel: this.data.settings.lastSync? ('Last synced '+new Date(this.data.settings.lastSync).toLocaleString('en-IN')) : 'Never synced yet',
       connected:!!this.apiUrl(), doSyncNow:()=>this.syncNow(false), syncingNow:this.state.syncing,
       connBadge:this.apiUrl()?'Connected':'Not connected', connBadgeStyle:'font-size:10px;font-weight:700;padding:2px 8px;border-radius:6px;'+(this.apiUrl()?'background:color-mix(in srgb,var(--ok) 20%,transparent);color:var(--ok)':'background:var(--color-neutral-800);color:var(--color-neutral-200)'),
-      backupJson:()=>this.backupJson(), exportAllExcel:()=>this.exportAllExcel(), restoreJson:()=>this.restoreJson(),
+      backupJson:()=>this.backupJson(), exportAllExcel:()=>this.exportAllExcel(), restoreJson:()=>this.restoreJson(), copyInviteLink:()=>this.copyInviteLink(),
       hasSyncError:!!(this.data.settings.lastSyncError), syncErrorText:this.data.settings.lastSyncError||'', copySyncError:()=>this.copySyncError(), clearSyncError:()=>this.clearSyncError(),
       noReplyItems:(this.data.settings.noReplyList||[]).map(v=>({v, onRemove:()=>this.removeNoReply(v)})), addNoReply:(e)=>this.addNoReply(e), onNoReplyKey:(e)=>this.onNoReplyKey(e),
       hasDemo:(this.data.cohorts||[]).some(c=>c.demo), clearDemo:()=>this.clearDemo() };
@@ -2160,19 +2276,62 @@ function json(o){ return ContentService.createTextOutput(JSON.stringify(o)).setM
   emailSlot(c){ if(c.interview&&c.interview.by)this.addOption('interviewers',c.interview.by);
     this.sendCandidateMail(c.id,'p2_accept');
   }
+  ivToggleSel(id){ const s=new Set(this.state.ivSel||[]); s.has(id)?s.delete(id):s.add(id); this.setState({ivSel:[...s]}); }
+  ivClearSel(){ this.setState({ivSel:[]}); }
+  ivInterviewList(){ return this.cohCands().filter(c=>c.stage==='interview'&&c.outcome!=='rejected'); }
+  ivToggleAll(){ const ids=this.ivInterviewList().map(c=>c.id); const cur=new Set(this.state.ivSel||[]); const all=ids.length&&ids.every(i=>cur.has(i)); this.setState({ivSel: all?[]:ids}); }
+  onBsDate(e){ this.setState({bsDate:e.target.value}); }
+  onBsStart(e){ this.setState({bsStart:e.target.value}); }
+  onBsEnd(e){ this.setState({bsEnd:e.target.value}); }
+  onBsMins(e){ this.setState({bsMins:Math.max(1,parseInt(e.target.value)||1)}); }
+  onBsBy(e){ this.setState({bsBy:e.target.value}); }
+  _minToHHMM(m){ const h=Math.floor(m/60), mm=m%60; return String(h).padStart(2,'0')+':'+String(mm).padStart(2,'0'); }
+  applyBulkSchedule(){
+    const ids=this.state.ivSel||[]; if(!ids.length){ this.flash('Select candidates in the table first'); return; }
+    if(!this.state.bsDate){ this.flash('Pick a date'); return; }
+    const mins=Math.max(1,parseInt(this.state.bsMins)||5);
+    const [sh,sm]=(this.state.bsStart||'17:00').split(':').map(Number);
+    const [eh,em]=(this.state.bsEnd||'18:00').split(':').map(Number);
+    let start=sh*60+sm; const end=eh*60+em;
+    const windowMins=end-start; const capacity=windowMins>0?Math.floor(windowMins/mins):ids.length;
+    if(windowMins>0 && ids.length>capacity){ this.flash('Window fits only '+capacity+' interviews at '+mins+' min each — widen it or reduce selection'); return; }
+    // preserve table order
+    const ordered=this.ivInterviewList().filter(c=>ids.includes(c.id));
+    ordered.forEach((c,i)=>{ c.interview=c.interview||{}; c.interview.date=this.state.bsDate; c.interview.slot=this._minToHHMM(start+i*mins);
+      if(this.state.bsBy) c.interview.by=this.state.bsBy; this.logHist(c,'Interview scheduled '+c.interview.date+' '+c.interview.slot); c.updatedAt=Date.now(); });
+    if(this.state.bsBy) this.addOption('interviewers',this.state.bsBy);
+    this.persist(); this.setState({rev:this.state.rev+1}); this.flash('Scheduled '+ordered.length+' interviews on '+this.state.bsDate); if(this.apiUrl())this.syncNow(true);
+  }
+  async ivBulkMail(){
+    const ids=this.state.ivSel||[]; const ready=this.ivInterviewList().filter(c=>ids.includes(c.id)&&c.interview&&c.interview.date&&c.interview.slot&&c.email);
+    if(!ready.length){ this.flash('Selected candidates need a date, time and email first'); return; }
+    this.flash('Sending '+ready.length+' interview-call emails…');
+    for(const c of ready){ await this.sendCandidateMail(c.id,'p2_accept'); }
+    this.flash('Sent '+ready.length+' interview-call emails');
+  }
   interviewsVM(){
-    const list=this.cohCands().filter(c=>c.stage==='interview'&&c.outcome!=='rejected');
+    const list=this.ivInterviewList();
     const pill=(bg,fg)=>'display:inline-block;padding:3px 9px;border-radius:6px;font-size:11px;font-weight:600;background:'+bg+';color:'+fg;
-    const ivRows=list.map(c=>({ id:c.id, name:c.name||'—', college:c.college||'', modeLabel:c.mode==='online'?'Online':'Offline',
+    const box=(on)=>'display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;border-radius:5px;cursor:pointer;font-size:11px;font-weight:800;border:1.5px solid '+(on?'var(--color-accent)':'var(--color-divider)')+';background:'+(on?'var(--color-accent)':'transparent')+';color:var(--color-bg)';
+    const selSet=new Set(this.state.ivSel||[]);
+    const ivRows=list.map(c=>{ const on=selSet.has(c.id); return { id:c.id, name:c.name||'—', college:c.college||'', modeLabel:c.mode==='online'?'Online':'Offline',
+      onToggle:(e)=>{ if(e&&e.stopPropagation)e.stopPropagation(); this.ivToggleSel(c.id); }, checkStyle:box(on), checkMark:on?'✓':'',
       modeStyle:c.mode==='online'?pill('var(--color-accent-900)','var(--color-accent-200)'):pill('var(--color-neutral-800)','var(--color-neutral-100)'),
       date:c.interview.date||'', slot:c.interview.slot||'', by:c.interview.by||'', link:c.interview.link||'', result:c.interview.result||'',
       linkPlaceholder:c.mode==='online'?'Meet/Zoom link':'Room / desk',
       onDate:(e)=>this.updIv(c.id,'date',e.target.value), onSlot:(e)=>this.updIv(c.id,'slot',e.target.value), onBy:(e)=>this.updIv(c.id,'by',e.target.value), onLink:(e)=>this.updIv(c.id,'link',e.target.value), onResult:(e)=>this.updIv(c.id,'result',e.target.value),
-      onEmail:()=>this.emailSlot(c), emailDisabled:!(c.interview.date&&c.interview.slot) }));
+      onEmail:()=>this.emailSlot(c), emailDisabled:!(c.interview.date&&c.interview.slot) }; });
+    const ids=list.map(c=>c.id); const allSel=ids.length&&ids.every(i=>selSet.has(i));
+    const selCount=(this.state.ivSel||[]).length;
     return { pageInterviews:this.state.page==='interviews', ivRows, ivEmpty:ivRows.length===0,
       ivIntro:'Schedule interviews for shortlisted candidates. '+ivRows.length+' awaiting or in progress for '+((this.cohort||{}).label||'this cohort')+'.',
       interviewerOpts:this.data.savedOptions.interviewers||['Mayank Sir','Bharat Sir'],
-      canExport:this.can('export'), ivExport:()=>this.exportExcel(list,'Cohort_interview_schedule') };
+      canExport:this.can('export'), ivExport:()=>this.exportExcel(list,'Cohort_interview_schedule'),
+      ivToggleAll:()=>this.ivToggleAll(), ivSelAllStyle:box(allSel), ivSelAllMark:allSel?'✓':'',
+      ivBulkOn:selCount>0, ivBulkCount:selCount, ivBulkMail:()=>this.ivBulkMail(), ivClearSel:()=>this.ivClearSel(),
+      bsDate:this.state.bsDate, bsStart:this.state.bsStart, bsEnd:this.state.bsEnd, bsMins:this.state.bsMins, bsBy:this.state.bsBy, bsSelCount:selCount,
+      onBsDate:(e)=>this.onBsDate(e), onBsStart:(e)=>this.onBsStart(e), onBsEnd:(e)=>this.onBsEnd(e), onBsMins:(e)=>this.onBsMins(e), onBsBy:(e)=>this.onBsBy(e), applyBulkSchedule:()=>this.applyBulkSchedule(),
+      bsHint:'Divides '+(this.state.bsStart||'17:00')+'–'+(this.state.bsEnd||'18:00')+' into '+this.state.bsMins+'-min slots ('+selCount+' selected). First at '+(this.state.bsStart||'17:00')+', next '+this.state.bsMins+' min later, and so on.' };
   }
 
   navModel(){
@@ -2269,6 +2428,7 @@ function json(o){ return ContentService.createTextOutput(JSON.stringify(o)).setM
 
     const me=this.me;
     const pipe=this.pipelineVM();
+    const apprNoteDraft=this.state.apprNoteDraft||''; const onApprNoteDraft=(e)=>this.setState({apprNoteDraft:e.target.value});
     const pb=this.playbookVM();
     const iv=this.interviewsVM();
     const ap=this.approvalsVM();
@@ -2278,7 +2438,11 @@ function json(o){ return ContentService.createTextOutput(JSON.stringify(o)).setM
     const tm=this.teamVM();
     return {
       ...pipe, ...pb, ...iv, ...ap, ...ex, ...an, ...tl, ...tm,
+      apprNoteDraft, onApprNoteDraft,
       themeAttr:this.state.theme, themeIcon:this.state.theme==='dark'?'ph ph-sun':'ph ph-moon-stars', toggleTheme:()=>this.toggleTheme(),
+      trackTabs:[['all','All'],['intern','Internship'],['associate','Associate']].map(t=>{ const on=(this.state.trackScope||'all')===t[0];
+        return { label:t[1], go:()=>this.setState({trackScope:t[0], sel:[], ivSel:[]}),
+          style:'white-space:nowrap;padding:6px 12px;border-radius:calc(var(--radius-md) - 2px);font-size:12px;font-weight:'+(on?'600':'500')+';cursor:pointer;border:none;background:'+(on?'var(--color-accent)':'transparent')+';color:'+(on?'#fff':'color-mix(in srgb,var(--color-text) 60%,transparent)') }; }),
       logoMono: (this.data.settings&&this.data.settings.logoUrl)?'':'C',
       logoBoxStyle:this.logoBox(34,18), logoBoxStyleLg:this.logoBox(42,23),
       syncNow:()=>this.syncNow(false), syncSpin:this.state.syncing?'animation:co-spin 1s linear infinite':'',
