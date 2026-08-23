@@ -409,7 +409,7 @@ th{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;c
             <div style="overflow-x:auto">
               <table style="width:100%;border-collapse:collapse;min-width:1000px">
                 <thead><tr>
-                  <th style="padding:10px 10px 10px 16px">Intern</th><th style="padding:10px">Mode</th><th style="padding:10px;text-align:right">Review</th>
+                  <sc-for list="{{ apExtCols }}" as="h" hint-placeholder-count="3"><th onClick="{{ h.onSort }}" style="{{ h.style }}">{{ h.label }}<span style="{{ h.arrowStyle }}">{{ h.arrow }}</span></th></sc-for>
                   <th style="padding:10px">Mayank Sir <span style="color:var(--dn)">*</span></th><th style="padding:10px">Bharat Sir</th><th style="padding:10px">Decision</th>
                   <th style="padding:10px">Stipend</th><th style="padding:10px 16px 10px 10px"></th>
                 </tr></thead>
@@ -1719,7 +1719,7 @@ class Component extends DCLogic {
       {k:'shortlisted',l:'Shortlisted',i:'ph ph-list-checks',c:byStage('shortlisted')||''},
       {k:'interviews',l:'Interview',i:'ph ph-calendar-dots',c:byStage('interview')||''},
       {k:'approvals',l:'Approvals',i:'ph ph-seal-check',c:apprPending||''},
-      {k:'onboarding',l:'Onboarding',i:'ph ph-user-check',c:byStage('final')||''},
+      {k:'onboarding',l:'Onboarding',i:'ph ph-user-check',c:act.filter(c=>c.stage==='final'&&(c.appr.mayank||c.appr.bypass)).length||''},
       {k:'running',l:'Running Cohort',i:'ph ph-users-three',sep:'Interns',c:running||''},
       {k:'extensions',l:'Extensions',i:'ph ph-arrow-line-right',c:extPending||''},
       {k:'analytics',l:'Analytics',i:'ph ph-chart-bar',sep:'Insights',c:''},
@@ -2826,7 +2826,7 @@ class Component extends DCLogic {
     if(tab==='pending') return this.active(cc).filter(c=>c.stage==='final'&&!(c.appr.mayank||c.appr.bypass));
     if(tab==='approved') return this.active(cc).filter(c=>c.stage==='final'&&(c.appr.mayank||c.appr.bypass)).concat(cc.filter(c=>c.stage==='joined'));
     if(tab==='rejected') return cc.filter(c=>this.isRejected(c)&&['interview','final'].includes(c.stage));
-    if(tab==='extensions') return this.active(cc).filter(c=>c.stage==='joined'&&c.ext.req);
+    if(tab==='extensions') return this.active(cc).filter(c=>c.stage==='joined'&&c.ext.req&&c.ext.decision!=='declined');
     return [];
   }
   /* ---------- generic table sort (click heading, arrow like LegalDesk) ---------- */
@@ -2875,7 +2875,8 @@ class Component extends DCLogic {
         showConfirm:ready, onConfirm:()=>this.confirmFinal(c.id),
         showBypass:!mOn&&!joined&&!rej, onBypass:()=>this.bypass(c.id) };
     });
-    const apExtRows=isExt?list.map(c=>{
+    const extListSorted=isExt?this.tsortApply('apext',list,{name:c=>(c.name||'').toLowerCase(),mode:c=>this.effMode(c),review:c=>this.reviewScore(c)}):[];
+    const apExtRows=isExt?extListSorted.map(c=>{
       const e=c.ext, mOn=!!e.mayank, bOn=!!e.bharat, approved=e.decision==='approved', declined=e.decision==='declined';
       const rs=this.reviewScore(c);
       let sl,ss; if(approved){sl='Approved';ss=this.pill('var(--okL)','var(--ok)');} else if(declined){sl='Declined';ss=this.pill('var(--dnL)','var(--dn)');} else {sl='Pending';ss=this.pill('var(--wnL)','var(--wn)');}
@@ -2908,6 +2909,7 @@ class Component extends DCLogic {
           cnt:n?String(n):'', cntStyle:n?('font-size:9px;font-weight:800;padding:1px 6px;border-radius:20px;background:'+(on?'rgba(255,255,255,.2)':'var(--sf2)')):'display:none' }; }),
       apRows, apExtRows, apEmpty:list.length===0,
       apCols:[this.tsortHdr('approvals','name','Finalist'),this.tsortHdr('approvals','track','Track'),this.tsortHdr('approvals','mode','Mode'),this.tsortHdr('approvals','score','App','right'),this.tsortHdr('approvals','iv','Intvw','right')],
+      apExtCols:[this.tsortHdr('apext','name','Intern'),this.tsortHdr('apext','mode','Mode'),this.tsortHdr('apext','review','Review','right')],
       apStatusCol:this.tsortHdr('approvals','status','Status'),
       apEmptyMsg:{pending:'No finalists awaiting sign-off.',approved:'No approved or confirmed candidates yet.',rejected:'No rejected finalists.',extensions:'No extension requests. Raise them from the Extensions tab.'}[tab],
       apStats:[stat(finalists.length,'Finalists','var(--tx)'),stat(confirmed.length,'Confirmed','var(--ok)'),
@@ -2933,7 +2935,9 @@ class Component extends DCLogic {
   toggleStipend(id){ const c=this.cand(id); if(!c) return;
     c.stip.grant=!c.stip.grant; this.logHist(c,'Stipend '+(c.stip.grant?'granted':'removed')); this.save(c.stip.grant?'Stipend granted':'Stipend removed'); }
   onboardingVM(){
-    let list=this.active(this.cohCands()).filter(c=>c.stage==='joined');
+    // Onboarding = confirmed finalists of THIS cohort awaiting start (pre-joining paperwork). Once an intern
+    // actually joins they move to Running Cohort only — no overlap. Extensions never appear here.
+    let list=this.active(this.cohCands()).filter(c=>c.stage==='final'&&(c.appr.mayank||c.appr.bypass));
     list=this.tsortApply('onboarding',list,{name:c=>(c.name||'').toLowerCase(),mode:c=>this.effMode(c),nda:c=>({pending:0,received:1,signed:2}[c.nda.status]||0),stipend:c=>(c.stip.grant?1:0)});
     const btn=(on,tone)=>'padding:6px 12px;border-radius:9px;font-size:11.5px;font-weight:700;white-space:nowrap;border:1.5px solid '+(on?tone:'var(--bd)')+';background:'+(on?'color-mix(in srgb,'+tone+' 16%,transparent)':'transparent')+';color:'+(on?tone:'var(--t2)');
     const ndaMap={pending:['NDA awaited','var(--wn)'],received:['E-copy in','var(--ac2)'],signed:['Signed & filed','var(--ok)']};
