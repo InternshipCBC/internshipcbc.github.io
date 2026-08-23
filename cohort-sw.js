@@ -1,6 +1,6 @@
 // Cohort service worker — network-first for the app, cache as offline fallback
 const CACHE='cohort-v2';
-const ASSETS=['./Cohort.dc.html','./cohort-data.js','./support.js','./CohortReview.dc.html','./cohort.webmanifest','./cohort-icon-192.png','./cohort-icon-512.png','./cohort-icon-180.png'];
+const ASSETS=['./Cohort.dc.html','./cohort-data.js','./support.js','./CohortReview.dc.html','./cohort.webmanifest','./logo.png','./cohort-icon-192.png','./cohort-icon-512.png','./cohort-icon-180.png'];
 self.addEventListener('install',e=>{ self.skipWaiting(); e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS).catch(()=>{}))); });
 self.addEventListener('activate',e=>{ e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==CACHE).map(k=>caches.delete(k))))); self.clients.claim(); });
 self.addEventListener('fetch',e=>{
