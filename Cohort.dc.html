@@ -1877,13 +1877,18 @@ class Component extends DCLogic {
       const _stamp=this.data.updatedAt;
       await fetch(url,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},
         body:JSON.stringify({token,action:'saveState',updatedAt:this.data.updatedAt,state:JSON.stringify(this.exportState())})});
-      // Verify the push actually landed on the server (no-cors POST can't report rejection itself).
-      try{
-        const chk=await this.jsonpGet(url+'?token='+encodeURIComponent(token)+'&action=all&callback=?');
-        if(chk&&chk.error) throw new Error(chk.error);
-        const cu=(chk&&chk.updatedAt)||0;
-        if(cu < _stamp-2000) throw new Error('Save did not persist on the server (endpoint may be an old deployment — redeploy WebApp.gs as a new version).');
-      }catch(ve){ throw new Error('Push not confirmed: '+((ve&&ve.message)||ve)); }
+      // Verify the push landed. A large state (hundreds of KB) can take many seconds to write on the
+      // server, so poll a few times before declaring failure rather than racing the still-running save.
+      let _confirmed=false, _verr='';
+      for(let _a=0; _a<6 && !_confirmed; _a++){
+        await new Promise(r=>setTimeout(r, _a===0?2500:3500));
+        try{
+          const chk=await this.jsonpGet(url+'?token='+encodeURIComponent(token)+'&action=all&callback=?');
+          if(chk&&chk.error){ _verr=chk.error; continue; }
+          if(((chk&&chk.updatedAt)||0) >= _stamp-2000){ _confirmed=true; }
+        }catch(ve){ _verr=(ve&&ve.message)||String(ve); }
+      }
+      if(!_confirmed) throw new Error('Push not confirmed after retries: '+(_verr||'server did not report the save. If this persists, redeploy WebApp.gs as a new version.'));
       this.data.settings.lastSync=Date.now();
       this.data.settings.lastSyncError='';
       // Nudge server-side AI vetting at most once every 5 min (it also runs on its own 10-min trigger).
