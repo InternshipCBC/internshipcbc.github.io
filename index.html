@@ -725,14 +725,14 @@ th{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;c
 
         <sc-if value="{{ aiShowPending }}" hint-placeholder-val="{{ false }}">
           <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px">
-            <p style="font-size:12px;color:var(--t2);margin:0">Outgoing mails Qwen held for your review. Approve to send as-is, or reject and re-draft. {{ aiVetting }} mail(s) still being reviewed.</p>
+            <p style="font-size:12px;color:var(--t2);margin:0">Outgoing mails Assistant held for your review. Approve to send as-is, or reject and re-draft. {{ aiVetting }} mail(s) still being reviewed.</p>
             <sc-for list="{{ aiPending }}" as="p" hint-placeholder-count="0">
               <div style="background:var(--sf);border:1.5px solid var(--wn);border-radius:var(--r);box-shadow:var(--sh);padding:14px 18px">
                 <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px">
                   <div><div style="font-weight:700;font-size:13px">{{ p.tplName }} → {{ p.name }}</div><div style="font-size:11px;color:var(--mu)">{{ p.to }}</div></div>
                   <button onClick="{{ p.onOpen }}" style="padding:5px 10px;border-radius:8px;font-size:11px;font-weight:700;background:var(--sf);border:1px solid var(--bd);color:var(--ac)"><i class="ph ph-eye"></i> Open record</button>
                 </div>
-                <div style="background:var(--wnL);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--wn);margin-bottom:8px"><b>⚠ Qwen flagged:</b> {{ p.issue }}</div>
+                <div style="background:var(--wnL);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--wn);margin-bottom:8px"><b>⚠ Assistant flagged:</b> {{ p.issue }}</div>
                 <div style="font-size:12px;font-weight:700;margin-bottom:2px">{{ p.subject }}</div>
                 <div style="font-size:12px;color:var(--t2);white-space:pre-wrap;line-height:1.5;max-height:120px;overflow:auto;background:var(--bg);border-radius:8px;padding:9px 12px;margin-bottom:10px">{{ p.preview }}</div>
                 <div style="display:flex;gap:8px">
@@ -741,7 +741,7 @@ th{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;c
                 </div>
               </div>
             </sc-for>
-            <sc-if value="{{ aiPendingEmpty }}" hint-placeholder-val="{{ true }}"><div style="padding:36px;text-align:center;color:var(--t2);font-size:13px">Nothing awaiting approval. Qwen lets clean mails through automatically; anything it's unsure about lands here.</div></sc-if>
+            <sc-if value="{{ aiPendingEmpty }}" hint-placeholder-val="{{ true }}"><div style="padding:36px;text-align:center;color:var(--t2);font-size:13px">Nothing awaiting approval. The assistant lets clean mails through automatically; anything it's unsure about lands here.</div></sc-if>
           </div>
         </sc-if>
 
@@ -763,13 +763,13 @@ th{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;c
               </sc-if>
             </div>
           </sc-for>
-          <sc-if value="{{ aiBusy }}" hint-placeholder-val="{{ false }}"><div style="color:var(--mu);font-size:12px"><i class="ph ph-circle-notch" style="animation:cospin 1s linear infinite"></i> Qwen is thinking…</div></sc-if>
+          <sc-if value="{{ aiBusy }}" hint-placeholder-val="{{ false }}"><div style="color:var(--mu);font-size:12px"><i class="ph ph-circle-notch" style="animation:cospin 1s linear infinite"></i> The assistant is thinking…</div></sc-if>
         </div>
         <div style="display:flex;gap:8px">
           <textarea value="{{ aiInput }}" onInput="{{ onAiInput }}" onKeyDown="{{ onAiKey }}" placeholder="Ask about this cohort, or ask for interview questions…" style="flex:1;min-height:46px;max-height:120px"></textarea>
           <button onClick="{{ aiSend }}" disabled="{{ aiSendDisabled }}" style="padding:0 20px;border-radius:11px;font-size:13px;font-weight:800;background:var(--acG);color:#fff;flex-shrink:0"><i class="ph ph-paper-plane-tilt"></i></button>
         </div>
-        <div style="font-size:10.5px;color:var(--mu);margin-top:6px">Answers use this cohort's live data via Qwen. Enter to send · Shift+Enter for a new line. Correct me anytime ("that was wrong, do X instead") and I'll remember.</div>
+        <div style="font-size:10.5px;color:var(--mu);margin-top:6px">Answers use this cohort's live data via the AI. Enter to send · Shift+Enter for a new line. Correct me anytime ("that was wrong, do X instead") and I'll remember.</div>
         </sc-if>
       </div>
     </sc-if>
@@ -1398,12 +1398,17 @@ class Component extends DCLogic {
     try{ const a=localStorage.getItem('cohort_acting'); if(a) this._acting=a; }catch(e){}
     this.applyConnectLink();
     import('./cohort-data.js').then(m=>{ this.REF=m; this.setState({rev:this.state.rev+1}); }).catch(()=>{});
-    this._timer=setInterval(()=>{ if(this.data&&this.data.settings.autoSync&&this.apiUrl()&&!this.state.syncing) this.syncNow(true); },60000);
+    this._timer=setInterval(()=>{ if(this.data&&this.data.settings.autoSync&&this.apiUrl()&&!this._syncing) this.syncNow(true); },7000);
+    // Sync the instant this device is looked at (foregrounded/refocused) — what keeps multiple devices aligned.
+    this._onFocus=()=>{ if(this.apiUrl()&&!this._syncing) this.syncNow(true); };
+    this._onVis=()=>{ if(!document.hidden&&this.apiUrl()&&!this._syncing) this.syncNow(true); };
+    window.addEventListener('focus',this._onFocus);
+    document.addEventListener('visibilitychange',this._onVis);
     this.scheduleMidnight();
     this.setState({rev:this.state.rev+1});
     if(this.apiUrl()) setTimeout(()=>this.syncNow(true),400);
   }
-  componentWillUnmount(){ clearInterval(this._timer); clearTimeout(this._midnight); }
+  componentWillUnmount(){ clearInterval(this._timer); clearTimeout(this._midnight); try{ window.removeEventListener('focus',this._onFocus); document.removeEventListener('visibilitychange',this._onVis); }catch(e){} }
   UI_KEYS=['trackScope','page','activeCohortId','cohYear','cohStatus','cohScope','pipeTab','facet','sortKey','sortDir','chips','search','ivTab','apprTab','teamTab','pbTab','anScope','drawerTab'];
   restoreUI(){ try{ const s=JSON.parse(localStorage.getItem('cohort_ui')||'{}'); this.UI_KEYS.forEach(k=>{ if(s[k]!==undefined) this.state[k]=s[k]; }); }catch(e){} }
   persistUI(){ try{ const o={}; this.UI_KEYS.forEach(k=>{ o[k]=this.state[k]; }); localStorage.setItem('cohort_ui',JSON.stringify(o)); }catch(e){} }
@@ -1513,7 +1518,7 @@ class Component extends DCLogic {
   persist(){ try{ localStorage.setItem(this.KEY,JSON.stringify(this.data)); }catch(e){} }
   touchDoc(){ this.data.updatedAt=Date.now(); }
   save(msg,push){ this.touchDoc(); this.persist(); if(msg) this.flash(msg); this.setState({rev:this.state.rev+1}); if(push!==false&&this.apiUrl()) this.pushSoon(); }
-  pushSoon(){ clearTimeout(this._pt); this._pt=setTimeout(()=>this.syncNow(true),2500); }
+  pushSoon(){ if(this._syncing){ this._syncAgain=true; return; } clearTimeout(this._pt); this._pt=setTimeout(()=>this.syncNow(true),1200); }
   flash(m){ this.setState({toast:m}); clearTimeout(this._tt); this._tt=setTimeout(()=>this.setState({toast:''}),2400); }
   uid(p){ return (p||'id')+'_'+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
   stop(e){ if(e&&e.stopPropagation) e.stopPropagation(); }
@@ -1734,7 +1739,7 @@ class Component extends DCLogic {
       running:['Running Cohort',L+' · interns with us now'],
       extensions:['Extensions',L+' · reviews & continuation'],
       analytics:['Analytics','Conversion, mix and retention'],
-      ai:['AI Assistant','Ask Qwen about this cohort — numbers, breakdowns, interview questions'],
+      ai:['AI Assistant','Ask the assistant about this cohort — numbers, breakdowns, interview questions'],
       timeline:['Timeline & Reporting',L+' · deadlines, seats & joining details'],
       playbook:['Playbook','Emails, Gmail set-up and automation'],
       settings:['Settings','Sync, lists and data'] }[this.state.page]||['',''];
@@ -1771,7 +1776,7 @@ class Component extends DCLogic {
   exportState(){ const d=this.data; return { candidates:d.candidates, cohorts:d.cohorts, team:d.team, counsels:d.counsels,
     savedOptions:d.savedOptions, emailTemplates:d.emailTemplates, whatsapp:d.whatsapp, inviteText:d.inviteText, inviteAssoc:d.inviteAssoc,
     aiLessons:d.aiLessons, pendingMails:d.pendingMails, aiReports:d.aiReports,
-    noReplyList:d.settings.noReplyList||[], reportingDetails:d.settings.reportingDetails, offerFiles:d.settings.offerFiles,
+    noReplyList:d.settings.noReplyList||[], reportingDetails:d.settings.reportingDetails, offerFiles:d.settings.offerFiles, logoUrl:d.settings.logoUrl, vetOutgoing:d.settings.vetOutgoing,
     deleted:d.deleted, updatedAt:d.updatedAt }; }
   mergeRemote(r){
     const tomb={};
@@ -1799,6 +1804,8 @@ class Component extends DCLogic {
       if(r.noReplyList) this.data.settings.noReplyList=r.noReplyList;
       if(r.reportingDetails!=null) this.data.settings.reportingDetails=r.reportingDetails;
       if(r.offerFiles) this.data.settings.offerFiles=r.offerFiles;
+      if(r.logoUrl!=null) this.data.settings.logoUrl=r.logoUrl;
+      if(r.vetOutgoing!=null) this.data.settings.vetOutgoing=r.vetOutgoing;
     }
     this.data.deleted=Object.keys(tomb).map(id=>({id,ts:tomb[id]})).sort((a,b)=>b.ts-a.ts).slice(0,800);
   }
@@ -1842,7 +1849,8 @@ class Component extends DCLogic {
   async syncNow(silent){
     const url=this.apiUrl();
     if(!url){ if(!silent) this.flash('Add the sync endpoint in Settings first'); return; }
-    if(this.state.syncing) return;
+    if(this._syncing) return;
+    this._syncing=true;
     const token=this.data.settings.apiToken||'';
     this.setState({syncing:true});
     const t0=Date.now();
@@ -1863,7 +1871,9 @@ class Component extends DCLogic {
       this.data.settings.lastSyncError='';
       try{ fetch(url,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({token,action:'vetPending'})}); }catch(e){}
       this.persist();
+      this._syncing=false;
       this.setState({syncing:false,rev:this.state.rev+1});
+      if(this._syncAgain){ this._syncAgain=false; setTimeout(()=>this.syncNow(true),200); }
       if(!silent) this.flash(added?('Synced — '+added+' new application(s) imported'):'Synced — everyone is up to date');
       else if(added) this.flash(added+' new application(s) imported');
     }catch(err){
@@ -1875,6 +1885,7 @@ class Component extends DCLogic {
         'Error: '+((err&&err.message)||String(err)),
         'Hint: '+this.syncHint(err)].join('\n');
       this.persist();
+      this._syncing=false;
       this.setState({syncing:false,rev:this.state.rev+1});
       if(!silent) this.flash('Sync failed — see the error detail in Settings');
     }
@@ -2187,17 +2198,17 @@ class Component extends DCLogic {
     if(!c.email){ this.flash('This candidate has no email address'); return false; }
     if(this.isNoReply(c.email)){ this.flash('Blocked: '+c.email+' is on the do-not-reply list'); return false; }
     const {subject,text}=this.fillTemplate(tpl,c);
-    // Qwen vets every outgoing mail first (when connected & enabled). Flagged mail waits in AI › Pending.
+    // The assistant vets every outgoing mail first (when connected & enabled). Flagged mail waits in AI › Pending.
     if(this.data.settings.vetOutgoing!==false && this.apiUrl()){
       const pid=this.uid('pm');
       this.data.pendingMails.push({id:pid,cid:c.id,name:c.name||'',to:c.email,template:key,tplName:tpl.name,subject,text,ctx:'stage: '+c.stage+', track: '+c.track,status:'vetting',issue:'',ts:Date.now()});
-      this.logHist(c,'Mail sent to Qwen for review: '+tpl.name);
-      this.save('Sent to Qwen for review…');
+      this.logHist(c,'Mail sent to the assistant for review: '+tpl.name);
+      this.save('Sent to the assistant for review…');
       const url=this.apiUrl()+'?token='+encodeURIComponent(this.data.settings.apiToken||'')+'&action=vetMail&subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(text.slice(0,3500))+'&ctx='+encodeURIComponent('stage: '+c.stage+', track: '+c.track)+'&callback=?';
       this.jsonpGet(url).then(r=>{ const p=(this.data.pendingMails||[]).find(x=>x.id===pid); if(!p) return;
-        if(r&&r.verdict==='flag'){ p.status='flagged'; p.issue=r.issue||'Flagged by Qwen'; this.save('⚠ Qwen held a mail — see AI › Pending approvals'); }
-        else { this._deliverMail(p); this.data.pendingMails=this.data.pendingMails.filter(x=>x.id!==pid); this.save('Qwen approved — email sent to '+(c.name||'candidate')); }
-      }).catch(e=>{ const p=(this.data.pendingMails||[]).find(x=>x.id===pid); if(p){ p.status='flagged'; p.issue='Could not reach Qwen — review manually.'; this.save('Mail held — see AI › Pending'); } });
+        if(r&&r.verdict==='flag'){ p.status='flagged'; p.issue=r.issue||'Flagged by the assistant'; this.save('⚠ Assistant held a mail — see AI › Pending approvals'); }
+        else { this._deliverMail(p); this.data.pendingMails=this.data.pendingMails.filter(x=>x.id!==pid); this.save('Assistant approved — email sent to '+(c.name||'candidate')); }
+      }).catch(e=>{ const p=(this.data.pendingMails||[]).find(x=>x.id===pid); if(p){ p.status='flagged'; p.issue='Could not reach the assistant — review manually.'; this.save('Mail held — see AI › Pending'); } });
       return true;
     }
     return this._deliverMail({cid:c.id,to:c.email,template:key,tplName:tpl.name,subject,text});
@@ -2216,7 +2227,7 @@ class Component extends DCLogic {
   approveMail(pid){ const p=(this.data.pendingMails||[]).find(x=>x.id===pid); if(!p) return; this._deliverMail(p); this.data.pendingMails=this.data.pendingMails.filter(x=>x.id!==pid); this.save('Approved — email sent'); }
   rejectMail(pid){ const p=(this.data.pendingMails||[]).find(x=>x.id===pid); if(!p) return; const c=this.cand(p.cid); if(c) this.logHist(c,'Mail rejected (not sent): '+(p.tplName||p.template)); this.data.pendingMails=this.data.pendingMails.filter(x=>x.id!==pid); this.save('Rejected — not sent'); }
   delReport(day){ this.data.aiReports=(this.data.aiReports||[]).filter(r=>r.day!==day); this.save('Report deleted'); }
-  teachLesson(text){ text=(text||'').trim(); if(!text) return; this.data.aiLessons=this.data.aiLessons||[]; this.data.aiLessons.push({text,by:this.actingAs||'—',ts:Date.now()}); this.save('Noted — Qwen will remember that'); }
+  teachLesson(text){ text=(text||'').trim(); if(!text) return; this.data.aiLessons=this.data.aiLessons||[]; this.data.aiLessons.push({text,by:this.actingAs||'—',ts:Date.now()}); this.save('Noted — the assistant will remember that'); }
   exportCols(){ return ['Name','Email','Phone','Track','Mode','Year / PQE','Band','Programme','College','City','Source','Referred by','Score','App rubric','Interview score','Verdict','Stage','Outcome','NDA','Cohort']; }
   exportRow(c){
     const coh=this.data.cohorts.find(x=>x.id===c.cohortId)||{};

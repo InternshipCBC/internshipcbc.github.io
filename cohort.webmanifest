@@ -2,7 +2,7 @@
   "name": "Cohort — Chambers of Bharat Chugh",
   "short_name": "Cohort",
   "description": "Intern intake & associate hiring for the Chambers of Bharat Chugh",
-  "start_url": "./Cohort.dc.html",
+  "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",

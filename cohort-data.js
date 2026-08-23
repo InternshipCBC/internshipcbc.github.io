@@ -511,18 +511,17 @@ function doPost(e){
   }
 }
 function saveReview(body){
-  var raw = readState(); if(!raw) return;
-  var st; try{ st = JSON.parse(raw); }catch(e){ return; }
-  var rv = body.review||{}; rv.ts = Date.now();
-  (st.candidates||[]).forEach(function(c){
-    if(c.id !== body.id) return;
-    c.reviews = c.reviews || [];
-    var i = -1; for(var k=0;k<c.reviews.length;k++){ if((c.reviews[k].by||"") === (rv.by||"")) { i=k; break; } }
-    if(i>=0) c.reviews[i] = rv; else c.reviews.push(rv);   // one review per counsel, latest wins
-    c.updatedAt = Date.now();
+  return withState_(function(st){
+    var rv = body.review||{}; rv.ts = Date.now(); var hit=false;
+    (st.candidates||[]).forEach(function(c){
+      if(c.id !== body.id) return; hit=true;
+      c.reviews = c.reviews || [];
+      var i = -1; for(var k=0;k<c.reviews.length;k++){ if((c.reviews[k].by||"") === (rv.by||"")) { i=k; break; } }
+      if(i>=0) c.reviews[i] = rv; else c.reviews.push(rv);   // one review per counsel, latest wins
+      c.updatedAt = Date.now();
+    });
+    return hit;
   });
-  st.updatedAt = Date.now();
-  writeState(JSON.stringify(st), st.updatedAt);
 }
 function sendEmail(body){
   var opts = { name:"The Chambers of Bharat Chugh" };
@@ -560,16 +559,9 @@ function uploadFile(body){
   f.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
   var url = f.getUrl();
   var field = {cv:"cvUrl", cover:"clUrl", nda:"ndaUrl", govtid:"govtIdUrl", other:"otherUrl"}[body.slot] || "otherUrl";
-  var raw = readState();
-  if(raw){
-    var st = null;
-    try{ st = JSON.parse(raw); }catch(e){}
-    if(st){
-      (st.candidates||[]).forEach(function(c){ if(c.id===body.id){ c[field]=url; c.updatedAt=Date.now(); } });
-      st.updatedAt = Date.now();
-      writeState(JSON.stringify(st), st.updatedAt);
-    }
-  }
+  withState_(function(st){
+    (st.candidates||[]).forEach(function(c){ if(c.id===body.id){ c[field]=url; c.updatedAt=Date.now(); } });
+  });
   return {ok:true, url:url, slot:body.slot, id:body.id};
 }
 
@@ -577,6 +569,14 @@ function stateSheet(){ var ss=SpreadsheetApp.openById(SHEET_ID); return ss.getSh
 function readState(){ return stateSheet().getRange("A1").getValue()||""; }
 function readUpdatedAt(){ return stateSheet().getRange("B1").getValue()||0; }
 function writeState(j,u){ var sh=stateSheet(); sh.getRange("A1").setValue(j||""); sh.getRange("B1").setValue(u||Date.now()); }
+/** Atomic read-modify-write of State under the script lock. fn(st) mutates st; return false to skip the write. */
+function withState_(fn){
+  var lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try{ var st={}; try{ st=JSON.parse(readState()||"{}"); }catch(e){ st={}; }
+    var r = fn(st); if(r===false) return {ok:true,skipped:true};
+    st.updatedAt = Date.now(); writeState(JSON.stringify(st), st.updatedAt); return {ok:true};
+  } finally { lock.releaseLock(); }
+}
 
 /** Server-side merge so no device can clobber another. Reads current state, unions record-by-record
  *  (newest updatedAt wins, tombstones win by time), writes the union atomically under a lock. */
@@ -617,6 +617,8 @@ function mergeStates_(a, b){
     noReplyList: newer.noReplyList||a.noReplyList||b.noReplyList,
     reportingDetails: newer.reportingDetails!=null?newer.reportingDetails:(a.reportingDetails!=null?a.reportingDetails:b.reportingDetails),
     offerFiles: newer.offerFiles||a.offerFiles||b.offerFiles,
+    logoUrl: newer.logoUrl!=null?newer.logoUrl:(a.logoUrl!=null?a.logoUrl:b.logoUrl),
+    vetOutgoing: newer.vetOutgoing!=null?newer.vetOutgoing:(a.vetOutgoing!=null?a.vetOutgoing:b.vetOutgoing),
     aiLessons: unionByTs_(a.aiLessons, b.aiLessons),
     pendingMails: unionById(a.pendingMails, b.pendingMails),
     aiReports: unionById(a.aiReports, b.aiReports),
@@ -645,14 +647,14 @@ function cleanEmail(s){ var m=String(s||"").match(/<([^>]+)>/); return m?m[1]:St
 function json(o){ return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }`;
 
 export const SCRIPT_GROQ = String.raw`/**
- * Cohort — AI vetting (AI.gs)  ·  Qwen2.5-32B via Groq (cloud, free tier)
+ * Cohort — AI vetting (AI.gs)  ·  GPT-OSS-120B via Groq (cloud, free tier)
  * Runs on Google's servers: a time trigger vets new applications 24/7; the dashboard
  * can also trigger an immediate pass when any device comes online.
  * SETUP: 1) paste this file  2) set GROQ_API_KEY  3) Run > installAiTrigger once (approve access).
  * It shares SHEET_ID / readState / writeState with your other two files (same project).
  */
 const GROQ_API_KEY = "PASTE_YOUR_GROQ_API_KEY";     // <-- from console.groq.com/keys
-const GROQ_MODEL   = "qwen-2.5-32b";                // Qwen2.5-32B on Groq
+const GROQ_MODEL   = "openai/gpt-oss-120b";          // Groq current self-serve model (JSON mode, free tier)
 const GROQ_URL     = "https://api.groq.com/openai/v1/chat/completions";
 const AI_BATCH     = 20;                              // per pass (well under free-tier limits)
 
@@ -883,7 +885,7 @@ export const SCRIPTS = [
   { name:'WebApp.gs — shared-data endpoint',
     desc:'Serves applications + the shared state to every device, saves state back, sends emails with Drive attachments.',
     code:SCRIPT_WEBAPP },
-  { name:'AI.gs — Qwen2.5-32B vetting via Groq (cloud, 24/7)',
+  { name:'AI.gs — GPT-OSS-120B vetting via Groq (cloud, 24/7)',
     desc:'Classifies fresh / follow-up / forward / automated, extracts profile fields, flags missing originals, checks documents & interview RSVPs. Runs on a Google time trigger and on device sync.',
     code:SCRIPT_GROQ }
 ];
