@@ -3125,8 +3125,17 @@ class Component extends DCLogic {
       r.onload=()=>{ let d=null;
         try{ d=JSON.parse(r.result); }catch(e){ this.flash('That is not a valid JSON file'); return; }
         if(!d||!d.cohorts||!d.candidates){ this.flash('That is not a Cohort backup'); return; }
-        this.ask('Restore this backup?','It replaces everything currently on this device with the file\u2019s contents ('+(d.cohorts||[]).length+' cohort(s), '+(d.candidates||[]).length+' candidate(s)). On the next sync it becomes the shared data for the team.',()=>{
-          this.data=d; this.persist(); this.load(); this.save('Backup restored'); },{danger:true,okLabel:'Replace and restore'});
+        this.ask('Restore this backup?','It replaces the candidate/cohort data on this device with the file\u2019s contents ('+(d.cohorts||[]).length+' cohort(s), '+(d.candidates||[]).length+' candidate(s)). Your current sync endpoint & token are kept. On the next sync it becomes the shared data for the team.',()=>{
+          // Keep the CURRENT sync connection — never resurrect the old endpoint/token stored in the backup.
+          const keepSync={ endpoint:(this.data.settings&&this.data.settings.endpoint)||'', apiToken:(this.data.settings&&this.data.settings.apiToken)||'' };
+          this.data=d;
+          if(!this.data.settings) this.data.settings={};
+          this.data.settings.endpoint=keepSync.endpoint;
+          this.data.settings.apiToken=keepSync.apiToken;
+          this.data.updatedAt=Date.now();
+          // Force a valid active cohort from the restored data (old id no longer exists).
+          this.state.activeCohortId='';
+          this.persist(); this.load(); this.save('Backup restored — '+(d.candidates||[]).length+' candidates'); },{danger:true,okLabel:'Replace and restore'});
       };
       r.readAsText(f); };
     inp.click();
