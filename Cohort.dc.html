@@ -1449,6 +1449,7 @@ class Component extends DCLogic {
     if(!d.whatsappMsgs) d.whatsappMsgs=this.defaultWhatsapp();
     (d.cohorts||[]).forEach(co=>{ if(!co.onboard){ const mi=this.MONTHS.indexOf(co.month); co.onboard={duration:'a minimum of four weeks',startDate:+new Date(co.year,mi<0?0:mi,1),whatsapp:'',preReads:'the CBC Handbook (attached)',reporting:'',mapsLink:''}; } });
     if(d.updatedAt==null) d.updatedAt=Date.now();
+    (d.cohorts||[]).forEach(c=>{ if(c.updatedAt==null) c.updatedAt=c.createdAt||Date.now(); });
     (d.candidates||[]).forEach(c=>this.normalize(c));
     if(!this.state.activeCohortId && d.cohorts.length){
       const a=d.cohorts.find(c=>c.status==='active')||d.cohorts[0];
@@ -1457,6 +1458,7 @@ class Component extends DCLogic {
     this.persist();
   }
   normalize(c){
+    if(c.updatedAt==null) c.updatedAt=c.createdAt||Date.now();
     if(!c.interview) c.interview={};
     const iv=c.interview;
     if(iv.date==null) iv.date=''; if(iv.slot==null) iv.slot=''; if(iv.by==null) iv.by='';
@@ -1555,7 +1557,7 @@ class Component extends DCLogic {
     return { id:this.uid('coh'), month, year, label:month+' '+year, status:status||'active',
       targets:{offline:8,online:4,stipendOffline:2,stipendOnline:0,associate:1},
       onboard:{duration:'a minimum of four weeks',startDate:+start,whatsapp:'',preReads:'the CBC Handbook (attached)',reporting:'',mapsLink:''},
-      deadlines:{applyClose:+close,shortlistBy:+sl,interviewBy:+iv,approveBy:+ap}, createdAt:Date.now() };
+      deadlines:{applyClose:+close,shortlistBy:+sl,interviewBy:+iv,approveBy:+ap}, createdAt:Date.now(), updatedAt:Date.now() };
   }
   seedCands(a,b){
     const M=(cid,name,track,mode,year,program,college,city,source,ref,stage,rev,ivs)=>{
@@ -1672,7 +1674,7 @@ class Component extends DCLogic {
     this.save('Created cohort '+c.label);
   }
   toggleCohortStatus(id){ const c=this.data.cohorts.find(x=>x.id===id); if(!c) return;
-    c.status=c.status==='closed'?'active':'closed'; this.save('Cohort '+c.label+' marked '+c.status); }
+    c.status=c.status==='closed'?'active':'closed'; c.updatedAt=Date.now(); this.save('Cohort '+c.label+' marked '+c.status); }
   delCohort(id){ const c=this.data.cohorts.find(x=>x.id===id); if(!c) return;
     const n=(this.data.candidates||[]).filter(x=>x.cohortId===id).length;
     this.ask('Delete '+c.label+'?','This removes the cohort and its '+n+' candidate record(s). Deletions propagate to the whole team on the next sync. This cannot be undone.',()=>{
@@ -1780,9 +1782,9 @@ class Component extends DCLogic {
     this.data.candidates=Object.values(byId).filter(c=>!(tomb[c.id]&&tomb[c.id]>=(c.updatedAt||0)));
     const cohById={};
     (this.data.cohorts||[]).forEach(c=>{ cohById[c.id]=c; });
-    (r.cohorts||[]).forEach(rc=>{ if(tomb[rc.id]) return; const l=cohById[rc.id];
-      if(!l) cohById[rc.id]=rc; else if((r.updatedAt||0)>(this.data.updatedAt||0)) cohById[rc.id]=rc; });
-    this.data.cohorts=Object.values(cohById).filter(c=>!tomb[c.id]);
+    (r.cohorts||[]).forEach(rc=>{ if(tomb[rc.id]&&tomb[rc.id]>=(rc.updatedAt||0)) return; const l=cohById[rc.id];
+      if(!l||(rc.updatedAt||0)>(l.updatedAt||0)) cohById[rc.id]=rc; });
+    this.data.cohorts=Object.values(cohById).filter(c=>!(tomb[c.id]&&tomb[c.id]>=(c.updatedAt||0)));
     if((r.updatedAt||0)>(this.data.updatedAt||0)){
       if(r.team) this.data.team=r.team;
       if(r.savedOptions) this.data.savedOptions=r.savedOptions;
@@ -2961,12 +2963,12 @@ class Component extends DCLogic {
   }
 
   /* ---------- timeline ---------- */
-  setDeadline(k,v){ const c=this.cohort; if(!c) return; c.deadlines[k]=v?+new Date(v+'T00:00:00'):0; this.save(null); }
-  setTarget(k,v){ const c=this.cohort; if(!c) return; c.targets[k]=Math.max(0,parseInt(v)||0); this.save(null); }
-  setOnboard(k,v){ const c=this.cohort; if(!c) return; if(!c.onboard) c.onboard={}; c.onboard[k]=v; this.save(null); }
+  setDeadline(k,v){ const c=this.cohort; if(!c) return; c.deadlines[k]=v?+new Date(v+'T00:00:00'):0; c.updatedAt=Date.now(); this.save(null); }
+  setTarget(k,v){ const c=this.cohort; if(!c) return; c.targets[k]=Math.max(0,parseInt(v)||0); c.updatedAt=Date.now(); this.save(null); }
+  setOnboard(k,v){ const c=this.cohort; if(!c) return; if(!c.onboard) c.onboard={}; c.onboard[k]=v; c.updatedAt=Date.now(); this.save(null); }
   recalcDeadlines(){ const c=this.cohort; if(!c) return;
     this.ask('Re-derive the deadlines?','Applications close 45 days before '+c.label+' starts, then 5 days each for shortlisting, interviews and approvals. Any manual dates you set are replaced.',()=>{
-      c.deadlines=this.mkCohort(c.month,c.year,c.status).deadlines; this.save('Deadlines re-derived'); },{okLabel:'Re-derive'}); }
+      c.deadlines=this.mkCohort(c.month,c.year,c.status).deadlines; c.updatedAt=Date.now(); this.save('Deadlines re-derived'); },{okLabel:'Re-derive'}); }
   timelineVM(){
     const c=this.cohort, d=(c&&c.deadlines)||{}, t=(c&&c.targets)||{};
     const act=this.active(this.cohCands());
