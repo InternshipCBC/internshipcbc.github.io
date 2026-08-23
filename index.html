@@ -353,8 +353,10 @@ th{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;c
             <table style="width:100%;border-collapse:collapse;min-width:1040px">
               <thead><tr>
                 <th style="padding:10px 10px 10px 16px;width:34px"><span onClick="{{ ivToggleAll }}" style="{{ ivSelAllStyle }}" title="Select all in view">{{ ivSelAllMark }}</span></th>
-                <th style="padding:10px">Candidate</th><th style="padding:10px">Mode</th><th style="padding:10px">Date</th><th style="padding:10px">Time</th>
-                <th style="padding:10px">Interviewer</th><th style="padding:10px">Link / room</th><th style="padding:10px;text-align:right">Marks</th><th style="padding:10px">Verdict</th><th style="padding:10px 16px 10px 10px"></th>
+                <sc-for list="{{ ivCols }}" as="h" hint-placeholder-count="4"><th onClick="{{ h.onSort }}" style="{{ h.style }}">{{ h.label }}<span style="{{ h.arrowStyle }}">{{ h.arrow }}</span></th></sc-for>
+                <th style="padding:10px">Interviewer</th><th style="padding:10px">Link / room</th>
+                <sc-for list="{{ ivCols2 }}" as="h" hint-placeholder-count="2"><th onClick="{{ h.onSort }}" style="{{ h.style }}">{{ h.label }}<span style="{{ h.arrowStyle }}">{{ h.arrow }}</span></th></sc-for>
+                <th style="padding:10px 16px 10px 10px"></th>
               </tr></thead>
               <tbody>
                 <sc-for list="{{ ivRows }}" as="r" hint-placeholder-count="4">
@@ -1800,6 +1802,7 @@ class Component extends DCLogic {
     (r.cohorts||[]).forEach(rc=>{ if(tomb[rc.id]&&tomb[rc.id]>=(rc.updatedAt||0)) return; const l=cohById[rc.id];
       if(!l||(rc.updatedAt||0)>(l.updatedAt||0)) cohById[rc.id]=rc; });
     this.data.cohorts=Object.values(cohById).filter(c=>!(tomb[c.id]&&tomb[c.id]>=(c.updatedAt||0)));
+    this.dedupeCohorts();
     if((r.updatedAt||0)>(this.data.updatedAt||0)){
       if(r.team) this.data.team=r.team;
       if(r.savedOptions) this.data.savedOptions=r.savedOptions;
@@ -1818,6 +1821,28 @@ class Component extends DCLogic {
     }
     this.data.deleted=Object.keys(tomb).map(id=>({id,ts:tomb[id]})).sort((a,b)=>b.ts-a.ts).slice(0,800);
   }
+  // Collapse duplicate cohorts for the same month+year (backup + Gmail-intake can create separate ids).
+  // Keep the oldest-created as canonical, re-point candidates, tombstone the rest.
+  dedupeCohorts(){
+    const byKey={};
+    (this.data.cohorts||[]).forEach(c=>{ const k=String(c.month).toLowerCase()+'|'+c.year; (byKey[k]=byKey[k]||[]).push(c); });
+    let changed=false;
+    Object.values(byKey).forEach(group=>{
+      if(group.length<2) return;
+      group.sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
+      const keep=group[0];
+      // keep the most advanced status/deadlines if a later one closed it
+      group.slice(1).forEach(dup=>{
+        (this.data.candidates||[]).forEach(cd=>{ if(cd.cohortId===dup.id){ cd.cohortId=keep.id; cd.updatedAt=Date.now(); } });
+        if(dup.status==='closed') keep.status='closed';
+        this.data.deleted.push({id:dup.id,ts:Date.now()});
+        changed=true;
+      });
+      keep.updatedAt=Date.now();
+    });
+    if(changed){ const dead=new Set(this.data.deleted.map(t=>t.id)); this.data.cohorts=this.data.cohorts.filter(c=>!dead.has(c.id)); }
+    return changed;
+  }
   importApplications(apps){
     let added=0;
     const tomb=new Set((this.data.deleted||[]).map(t=>t.id));
@@ -1828,6 +1853,8 @@ class Component extends DCLogic {
       let coh=this.data.cohorts.find(c=>String(c.month).toLowerCase()===String(month).toLowerCase()&&String(c.year)===String(year));
       if(!coh){ coh=this.mkCohort(this.MONTHS.find(m=>m.toLowerCase()===String(month).toLowerCase())||String(month),parseInt(year)||new Date().getFullYear(),'active'); this.data.cohorts.push(coh); }
       const key=(email.toLowerCase()+'|'+coh.id);
+      // don't resurrect a candidate the team deleted
+      if(this._importedKeys&&this._importedKeys.has(key)) return;
       if(this._importedKeys&&this._importedKeys.has(key)) return;
       const dup=(this.data.candidates||[]).find(c=>c.cohortId===coh.id&&(c.email||'').toLowerCase()===email.toLowerCase());
       if(dup){
@@ -2177,9 +2204,21 @@ class Component extends DCLogic {
       r.onload=()=>{
         const b64=String(r.result).split(',')[1]||'';
         this.flash('Uploading "'+f.name+'" to Drive…');
+        const u=this.apiUrl()+'?token='+encodeURIComponent(this.data.settings.apiToken||'')+'&action=uploadFile&callback=?';
+        // send the file via a POST (no-cors), then read the resulting link back via JSONP and apply it locally,
+        // so a manual candidate not yet on the server still gets its Drive link.
         this.post({action:'uploadFile',id,slot,name:f.name,mime:f.type||'application/octet-stream',dataBase64:b64,
           who:c.name||'Candidate',month:((this.data.cohorts.find(x=>x.id===c.cohortId)||{}).label||'')})
-          .then(()=>{ this.logHist(c,'Uploaded '+slot+': '+f.name); this.save('Uploaded — the link appears on the next sync'); setTimeout(()=>this.syncNow(true),6000); });
+          .then(()=>{
+            const field={cv:'cvUrl',cover:'clUrl',nda:'ndaUrl',govtid:'govtIdUrl',other:'otherUrl'}[slot]||'otherUrl';
+            let tries=0;
+            const poll=()=>{ tries++;
+              this.jsonpGet(this.apiUrl()+'?token='+encodeURIComponent(this.data.settings.apiToken||'')+'&action=lastUpload&id='+encodeURIComponent(id)+'&slot='+encodeURIComponent(slot)+'&callback=?')
+                .then(rr=>{ if(rr&&rr.url){ const cc=this.cand(id); if(cc){ cc[field]=rr.url; cc.updatedAt=Date.now(); this.logHist(cc,'Uploaded '+slot+': '+f.name); this.save('Uploaded — link attached'); } }
+                  else if(tries<6){ setTimeout(poll,3000); } else { this.logHist(c,'Uploaded '+slot+' (link pending): '+f.name); this.save('Uploaded — link will appear shortly'); } })
+                .catch(()=>{ if(tries<6) setTimeout(poll,3000); }); };
+            setTimeout(poll,3000);
+          });
       };
       r.readAsDataURL(f);
     };
@@ -2733,7 +2772,9 @@ class Component extends DCLogic {
   interviewsVM(){
     const valid=this.IV_TABS.map(t=>t[0]);
     const tab=valid.includes(this.state.ivTab)?this.state.ivTab:'toschedule';
-    const list=this.ivList(tab), selSet=new Set(this.state.ivSel||[]);
+    const list=this.tsortApply('interview', this.ivList(tab), {name:c=>(c.name||'').toLowerCase(),mode:c=>this.effMode(c),date:c=>this.ivSortKey(c),time:c=>this.ivSortKey(c),marks:c=>this.ivScore(c),verdict:c=>(c.interview.result||'')}), selSet=new Set(this.state.ivSel||[]);
+    const ivCols=[this.tsortHdr('interview','name','Candidate'),this.tsortHdr('interview','mode','Mode'),this.tsortHdr('interview','date','Date'),this.tsortHdr('interview','time','Time')];
+    const ivCols2=[this.tsortHdr('interview','marks','Marks','right'),this.tsortHdr('interview','verdict','Verdict')];
     const ivRows=list.map(c=>{
       const on=selSet.has(c.id), m=this.ivScore(c);
       return { name:c.name||'(unnamed)', sub:this.trackName(c.track)+' · '+this.yearBand(c)+(c.college?(' · '+c.college):''),
@@ -2763,7 +2804,7 @@ class Component extends DCLogic {
         return { label:t[1], go:()=>this.setState({ivTab:t[0],ivSel:[]}),
           style:'padding:7px 14px;border-radius:7px;font-size:12px;font-weight:600;white-space:nowrap;flex:1 1 auto;text-align:center;display:inline-flex;align-items:center;justify-content:center;gap:6px;'+(on?'color:#fff;background:var(--acG)':'color:var(--t2)'),
           cnt:n?String(n):'', cntStyle:n?('font-size:9px;font-weight:800;padding:1px 6px;border-radius:20px;background:'+(on?'rgba(255,255,255,.2)':'var(--sf2)')):'display:none' }; }),
-      ivRows, ivEmpty:ivRows.length===0, ivEmptyMsg:emptyMsg,
+      ivRows, ivEmpty:ivRows.length===0, ivEmptyMsg:emptyMsg, ivCols, ivCols2,
       ivToggleAll:()=>this.ivToggleAll(), ivSelAllStyle:this.box(allSel), ivSelAllMark:allSel?'✓':'',
       ivSelCount:nSel, ivBulkOn:nSel>0, ivClearSel:()=>this.ivClearSel(),
       ivBulkActions:[{v:'mail',l:'Email the interview call'},{v:'verdict:pass',l:'Mark → Cleared'},
