@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--fn:'Inter',system-ui,sans-serif;--fd:'Space Grotesk','Inter',sans-serif;
+--bg:#111417;--sf:#1c2127;--sf2:#252b33;--tx:#eef2f4;--t2:#9fabb8;--mu:#66727f;--bd:#2a3139;
+--ac:#2dd4bf;--ac2:#38bdf8;--acL:#0e2c2b;--acG:linear-gradient(135deg,#12b3a6 0%,#0ea5e9 100%);
+--ok:#34d399;--okL:#0c2a20;--dn:#fb7185;--dnL:#331b21;--wn:#fbbf24;--r:14px;--sh:0 1px 2px rgba(0,0,0,.4),0 4px 16px rgba(0,0,0,.3)}
+body{font-family:var(--fn);background:var(--bg);color:var(--tx);font-size:14px;line-height:1.6;min-height:100vh}
+::selection{background:var(--ac);color:#fff}
+input,select,textarea{font-family:var(--fn);font-size:14px;color:var(--tx);background:var(--sf);border:1.5px solid var(--bd);border-radius:10px;padding:10px 14px;outline:none;width:100%;transition:border-color .2s,box-shadow .2s}
+input:focus,select:focus,textarea:focus{border-color:var(--ac);box-shadow:0 0 0 3px rgba(45,212,191,.15)}
+textarea{resize:vertical;min-height:56px;line-height:1.6}
+button{font-family:var(--fn);cursor:pointer;transition:all .15s;border:none;background:none;color:inherit}
+button:disabled{opacity:.45;cursor:not-allowed}
+label{display:block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--t2);margin-bottom:5px}
+@keyframes rvpop{from{opacity:0;transform:scale(.98)}to{opacity:1;transform:none}}
+</style>
+</helmet>
+
+<div style="min-height:100vh;padding:clamp(16px,4vw,44px) 16px;display:flex;justify-content:center">
+  <div style="width:100%;max-width:720px">
+
+    <div style="display:flex;align-items:center;gap:13px;margin-bottom:8px">
+      <div style="width:42px;height:42px;border-radius:12px;background:var(--acG);display:flex;align-items:center;justify-content:center;font-family:var(--fd);font-weight:800;font-size:17px;color:#fff;flex-shrink:0">C</div>
+      <div>
+        <div style="font-family:var(--fd);font-weight:800;font-size:20px;line-height:1.15">Intern review</div>
+        <div style="font-size:12px;color:var(--t2)">Chambers of Bharat Chugh · {{ cohortLabel }}</div>
+      </div>
+    </div>
+
+    <sc-if value="{{ invalid }}" hint-placeholder-val="{{ false }}">
+      <div style="background:var(--sf);border:1.5px solid var(--dn);border-radius:var(--r);padding:24px;margin-top:20px;color:var(--dn);font-size:14px"><b>This review link is invalid or has expired.</b><br><span style="color:var(--t2)">Please ask the internship team to send you a fresh link.</span></div>
+    </sc-if>
+
+    <sc-if value="{{ done }}" hint-placeholder-val="{{ false }}">
+      <div style="background:var(--sf);border:1.5px solid var(--ok);border-radius:var(--r);padding:30px;margin-top:20px;text-align:center;animation:rvpop .2s ease">
+        <div style="font-size:40px;color:var(--ok);margin-bottom:8px"><i class="ph-fill ph-check-circle"></i></div>
+        <div style="font-family:var(--fd);font-weight:800;font-size:20px">Thank you, {{ counsel }}.</div>
+        <div style="font-size:13px;color:var(--t2);margin-top:6px">Your review of {{ submittedCount }} intern(s) has been recorded. You may close this page.</div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ ready }}" hint-placeholder-val="{{ true }}">
+      <div style="margin-top:20px">
+        <div style="background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);box-shadow:var(--sh);padding:18px 20px;margin-bottom:16px">
+          <label>Who is reviewing?</label>
+          <select value="{{ counsel }}" onChange="{{ onCounsel }}">
+            <option value="">Select your name…</option>
+            <sc-for list="{{ counsels }}" as="c" hint-placeholder-count="3"><option value="{{ c }}">{{ c }}</option></sc-for>
+          </select>
+          <div style="font-size:11px;color:var(--mu);margin-top:8px">Only the internship team can add or remove names on this list. If your name is missing, tell them.</div>
+        </div>
+
+        <sc-if value="{{ counselChosen }}" hint-placeholder-val="{{ false }}">
+          <div>
+            <sc-for list="{{ interns }}" as="it" hint-placeholder-count="3">
+              <div style="background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);box-shadow:var(--sh);margin-bottom:14px;overflow:hidden">
+                <div style="padding:15px 18px;border-bottom:1px solid var(--bd)">
+                  <div style="font-family:var(--fd);font-weight:700;font-size:16px">{{ it.name }}</div>
+                  <div style="font-size:12px;color:var(--t2)">{{ it.sub }}</div>
+                </div>
+                <div style="padding:16px 18px">
+                  <div style="font-size:13px;font-weight:700;margin-bottom:9px">Have you worked with {{ it.first }} enough to review them?</div>
+                  <div style="display:flex;gap:8px;margin-bottom:4px">
+                    <button onClick="{{ it.onWorkedYes }}" style="{{ it.yesStyle }}">Yes</button>
+                    <button onClick="{{ it.onWorkedNo }}" style="{{ it.noStyle }}">No — skip this one</button>
+                  </div>
+
+                  <sc-if value="{{ it.expanded }}" hint-placeholder-val="{{ false }}">
+                    <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--bd)">
+                      <label>Rate them (1–5 on each)</label>
+                      <sc-for list="{{ it.params }}" as="p" hint-placeholder-count="8">
+                        <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+                          <div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:600">{{ p.label }}</div><div style="font-size:10.5px;color:var(--mu)">{{ p.hint }}</div></div>
+                          <div style="display:flex;gap:5px;flex-shrink:0">
+                            <sc-for list="{{ p.dots }}" as="d" hint-placeholder-count="5"><span onClick="{{ d.onClick }}" title="{{ d.title }}" style="{{ d.style }}"></span></sc-for>
+                          </div>
+                        </div>
+                      </sc-for>
+
+                      <label style="margin-top:14px">Your recommendation</label>
+                      <div style="display:flex;flex-direction:column;gap:7px">
+                        <sc-for list="{{ it.recOpts }}" as="o" hint-placeholder-count="3"><button onClick="{{ o.onClick }}" style="{{ o.style }}"><span style="{{ o.dot }}"></span> {{ o.label }}</button></sc-for>
+                      </div>
+
+                      <label style="margin-top:14px">Should they be granted a stipend?</label>
+                      <div style="display:flex;gap:8px">
+                        <sc-for list="{{ it.stipOpts }}" as="s" hint-placeholder-count="2"><button onClick="{{ s.onClick }}" style="{{ s.style }}">{{ s.label }}</button></sc-for>
+                      </div>
+
+                      <label style="margin-top:14px">Any comments</label>
+                      <textarea value="{{ it.comments }}" onInput="{{ it.onComments }}" placeholder="Anything that would help Bharat Sir and Mayank Sir decide… (optional)"></textarea>
+                    </div>
+                  </sc-if>
+                </div>
+              </div>
+            </sc-for>
+
+            <div style="position:sticky;bottom:0;padding:14px 0;background:linear-gradient(to top,var(--bg) 60%,transparent)">
+              <button onClick="{{ submit }}" disabled="{{ submitDisabled }}" style="{{ submitStyle }}"><i class="ph ph-paper-plane-tilt"></i> {{ submitLabel }}</button>
+              <div style="font-size:11px;color:var(--mu);text-align:center;margin-top:8px">{{ submitHint }}</div>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:&quot;100%&quot;,&quot;height&quot;:&quot;100%&quot;}}">
+class Component extends DCLogic {
+  state = { payload:null, invalid:false, counsel:'', answers:{}, done:false, submitting:false, submittedCount:0, params:[], recOpts:[] };
+  componentDidMount(){
+    try{
+      const m=(location.hash||'').match(/r=([^&]+)/);
+      if(!m) throw new Error('no payload');
+      const p=JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(m[1])))));
+      if(!p||!p.interns||!p.interns.length) throw new Error('empty');
+      const answers={}; p.interns.forEach(it=>{ answers[it.id]={worked:null,ratings:{},recommend:'',stipend:'',comments:''}; });
+      this.setState({payload:p, answers});
+    }catch(e){ this.setState({invalid:true}); }
+    import('./cohort-data.js').then(m=>{ this.setState({params:m.REVIEW_PARAMS||[], recOpts:(m.RECOMMEND_OPTIONS||[]).filter(o=>o.v!=='na')}); }).catch(()=>{});
+    try{ const c=localStorage.getItem('cohort_review_counsel'); if(c) this.setState({counsel:c}); }catch(e){}
+  }
+  onCounsel(e){ const v=e.target.value; try{ localStorage.setItem('cohort_review_counsel',v); }catch(x){} this.setState({counsel:v}); }
+  setWorked(id,v){ const a=Object.assign({},this.state.answers); a[id]=Object.assign({},a[id],{worked:v}); this.setState({answers:a}); }
+  setRating(id,k,v){ const a=Object.assign({},this.state.answers); const r=Object.assign({},a[id].ratings); r[k]=(r[k]===v?null:v); a[id]=Object.assign({},a[id],{ratings:r}); this.setState({answers:a}); }
+  setRec(id,v){ const a=Object.assign({},this.state.answers); a[id]=Object.assign({},a[id],{recommend:a[id].recommend===v?'':v}); this.setState({answers:a}); }
+  setStip(id,v){ const a=Object.assign({},this.state.answers); a[id]=Object.assign({},a[id],{stipend:a[id].stipend===v?'':v}); this.setState({answers:a}); }
+  setComments(id,v){ const a=Object.assign({},this.state.answers); a[id]=Object.assign({},a[id],{comments:v}); this.setState({answers:a}); }
+  filledCount(){ let n=0; const a=this.state.answers; Object.keys(a).forEach(id=>{ if(a[id].worked==='no'||(a[id].worked==='yes'&&(Object.values(a[id].ratings).some(x=>x)||a[id].recommend))) n++; }); return n; }
+  async submit(){
+    const p=this.state.payload; if(!p||!this.state.counsel) return;
+    this.setState({submitting:true});
+    const a=this.state.answers; let n=0;
+    for(const it of p.interns){
+      const ans=a[it.id]; if(!ans||ans.worked==null) continue;
+      const review={ by:this.state.counsel, worked:ans.worked, ratings:ans.worked==='yes'?ans.ratings:{}, recommend:ans.worked==='no'?'na':ans.recommend, stipend:ans.stipend, comments:(ans.comments||'').trim() };
+      try{ await fetch(p.e,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({token:p.t,action:'saveReview',id:it.id,review})}); }catch(e){}
+      n++;
+    }
+    this.setState({submitting:false,done:true,submittedCount:n});
+  }
+  renderVals(){
+    const p=this.state.payload, a=this.state.answers;
+    const dot=(on,tone)=>'width:16px;height:16px;border-radius:50%;cursor:pointer;flex-shrink:0;border:1.5px solid '+(on?tone:'var(--bd)')+';background:'+(on?tone:'transparent');
+    const optBtn=(on,tone)=>'display:flex;align-items:center;gap:9px;text-align:left;padding:10px 13px;border-radius:10px;font-size:13px;font-weight:600;border:1.5px solid '+(on?tone:'var(--bd)')+';background:'+(on?'color-mix(in srgb,'+tone+' 15%,transparent)':'var(--sf2)')+';color:'+(on?tone:'var(--tx)')+';width:100%';
+    const segBtn=(on,tone)=>'padding:9px 18px;border-radius:10px;font-size:13px;font-weight:700;border:1.5px solid '+(on?tone:'var(--bd)')+';background:'+(on?'color-mix(in srgb,'+tone+' 15%,transparent)':'var(--sf2)')+';color:'+(on?tone:'var(--t2)');
+    const interns=(p&&p.interns||[]).map(it=>{
+      const ans=a[it.id]||{worked:null,ratings:{},recommend:'',stipend:'',comments:''};
+      const first=(it.name||'').split(' ')[0]||'them';
+      return { name:it.name, sub:it.sub||[it.band,it.college].filter(Boolean).join(' · '), first,
+        onWorkedYes:()=>this.setWorked(it.id,'yes'), onWorkedNo:()=>this.setWorked(it.id,'no'),
+        yesStyle:segBtn(ans.worked==='yes','var(--ok)'), noStyle:segBtn(ans.worked==='no','var(--mu)'),
+        expanded:ans.worked==='yes',
+        params:(this.state.params||[]).map(pm=>({ label:pm.label, hint:pm.hint,
+          dots:[1,2,3,4,5].map(v=>({ onClick:()=>this.setRating(it.id,pm.k,v), title:v+' / 5', style:dot((ans.ratings[pm.k]||0)>=v,'var(--ac)') })) })),
+        recOpts:(this.state.recOpts||[]).map(o=>({ label:o.label, onClick:()=>this.setRec(it.id,o.v),
+          style:optBtn(ans.recommend===o.v,o.tone), dot:'width:9px;height:9px;border-radius:50%;flex-shrink:0;background:'+o.tone })),
+        stipOpts:[['yes','Yes','var(--ok)'],['no','No','var(--dn)']].map(s=>({ label:s[1], onClick:()=>this.setStip(it.id,s[0]), style:segBtn(ans.stipend===s[0],s[2]) })),
+        comments:ans.comments, onComments:(e)=>this.setComments(it.id,e.target.value) };
+    });
+    const filled=this.filledCount();
+    return {
+      cohortLabel:(p&&p.cohort)||'', invalid:this.state.invalid, done:this.state.done, ready:!this.state.invalid&&!this.state.done,
+      counsel:this.state.counsel, onCounsel:(e)=>this.onCounsel(e), counsels:(p&&p.c)||[],
+      counselChosen:!!this.state.counsel, interns, submittedCount:this.state.submittedCount,
+      submit:()=>this.submit(), submitDisabled:this.state.submitting||!this.state.counsel||filled===0,
+      submitLabel:this.state.submitting?'Sending…':('Submit review'+(filled?(' ('+filled+')'):'')),
+      submitStyle:'width:100%;padding:14px;border-radius:11px;font-size:14px;font-weight:800;background:var(--acG);color:#fff;box-shadow:0 4px 14px rgba(45,212,191,.3)'+((this.state.submitting||!this.state.counsel||filled===0)?';opacity:.5':''),
+      submitHint:filled?(filled+' intern(s) answered — you can submit now or answer more first.'):'Answer at least one intern to submit. Marking "No" on someone counts as answered.'
+    };
+  }
+}
+</script>
+</body>
+</html>
