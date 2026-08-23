@@ -769,6 +769,7 @@ function aiChatFn(question, cohortLabel){
     return {reply: parsed.reply||"", actions: parsed.actions||[]};
   }catch(e){ return {error:String(e)}; }
 }
+`;
 
 export const SCRIPTS = [
   { name:'Code.gs — application intake (runs every 5 min)',

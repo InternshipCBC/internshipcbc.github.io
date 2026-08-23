@@ -891,7 +891,7 @@ th{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;c
         </sc-if>
         <sc-if value="{{ pbWhatsapp }}" hint-placeholder-val="{{ false }}">
           <div style="max-width:800px;display:grid;gap:12px">
-            <p style="margin:0;font-size:12px;color:var(--t2)">Ready-to-send group messages. <b style="color:var(--tx)">{{Month}}</b>, <b style="color:var(--tx)">{{Reporting}}</b> and <b style="color:var(--tx)">{{WhatsAppLink}}</b> fill from the selected cohort when you copy.</p>
+            <p style="margin:0;font-size:12px;color:var(--t2)">Ready-to-send group messages \u2014 copy and paste as-is, any month. No placeholders to fill.</p>
             <sc-for list="{{ pbWaMsgs }}" as="m" hint-placeholder-count="2">
               <div style="background:var(--sf);border-radius:var(--r);border:1px solid var(--bd);box-shadow:var(--sh);padding:16px 18px">
                 <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap">
@@ -2328,7 +2328,7 @@ class Component extends DCLogic {
   }
   defaultWhatsapp(){ return [
     { key:'prestart', name:'Pre-start welcome (before Day 1)', when:'Send in the group once everyone has joined, a day or two before the start date.',
-      text:'Welcome to the {{Month}} internship at the Chambers of Bharat Chugh! \uD83C\uDF89\n\nWe’re glad to have you with us. A few quick things before we begin:\n1. If you haven’t yet read the CBC Handbook, please do — it will help you find your feet fast.\n2. If your signed NDA is still pending, kindly fill, sign and send a scanned copy to my DM, and bring a physical signed copy on Day 1.\n3. Please also DM me a copy of one valid Govt. ID (Aadhaar preferred).\n\nReporting: {{Reporting}}\nSee you soon!' },
+      text:'Welcome to your internship at the Chambers of Bharat Chugh! \uD83C\uDF89\n\nWe’re glad to have you with us. A few quick things before we begin:\n1. If you haven’t yet read the CBC Handbook, please do — it will help you find your feet fast.\n2. If your signed NDA is still pending, kindly fill, sign and send a scanned copy to my DM, and bring a physical signed copy on your first day.\n3. Please also DM me a copy of one valid Govt. ID (Aadhaar preferred).\n\nReporting details will be shared here shortly. See you soon!' },
     { key:'generic', name:'General coordination message', when:'A reusable note for day-to-day coordination in the group.',
       text:'Hi all — a quick note from the Chambers. Please keep an eye on this group for daily instructions, listing changes and reporting updates. Reach out on my DM for anything specific to your work. — Chambers of Bharat Chugh' }
   ]; }
