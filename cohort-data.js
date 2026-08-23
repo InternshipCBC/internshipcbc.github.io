@@ -500,7 +500,7 @@ function doPost(e){
   try { body = JSON.parse(e.postData.contents||"{}"); } catch(err){ return json({error:"bad json"}); }
   if((body.token||"") !== API_TOKEN) return json({error:"unauthorized"});
   switch(body.action){
-    case "saveState":    writeState(body.state, body.updatedAt); return json({ok:true});
+    case "saveState":    return json(mergeSaveState_(body.state, body.updatedAt));
     case "sendEmail":    sendEmail(body); return json({ok:true});
     case "updateStatus": setStatus(body.email, body.status); return json({ok:true});
     case "purgeFiles":   purgeFiles(body.urls); return json({ok:true});
@@ -577,6 +577,59 @@ function stateSheet(){ var ss=SpreadsheetApp.openById(SHEET_ID); return ss.getSh
 function readState(){ return stateSheet().getRange("A1").getValue()||""; }
 function readUpdatedAt(){ return stateSheet().getRange("B1").getValue()||0; }
 function writeState(j,u){ var sh=stateSheet(); sh.getRange("A1").setValue(j||""); sh.getRange("B1").setValue(u||Date.now()); }
+
+/** Server-side merge so no device can clobber another. Reads current state, unions record-by-record
+ *  (newest updatedAt wins, tombstones win by time), writes the union atomically under a lock. */
+function mergeSaveState_(incomingStr, incomingUpdatedAt){
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try{
+    var incoming = {}; try{ incoming = JSON.parse(incomingStr||"{}"); }catch(e){ return {ok:false, reason:"bad json"}; }
+    var cur = {}; try{ cur = JSON.parse(readState()||"{}"); }catch(e){ cur = {}; }
+    var out = mergeStates_(cur, incoming);
+    writeState(JSON.stringify(out), Math.max(+incomingUpdatedAt||0, +out.updatedAt||0, Date.now()));
+    return {ok:true, merged:true};
+  } finally { lock.releaseLock(); }
+}
+function mergeStates_(a, b){
+  a=a||{}; b=b||{};
+  // tombstones: id -> latest delete time
+  var tomb={};
+  (a.deleted||[]).concat(b.deleted||[]).forEach(function(t){ if(t&&t.id) tomb[t.id]=Math.max(tomb[t.id]||0, t.ts||0); });
+  function unionById(la, lb){
+    var m={};
+    (la||[]).forEach(function(x){ if(x&&x.id) m[x.id]=x; });
+    (lb||[]).forEach(function(x){ if(!x||!x.id) return; var e=m[x.id]; if(!e||(x.updatedAt||0)>(e.updatedAt||0)) m[x.id]=x; });
+    return Object.keys(m).map(function(k){ return m[k]; }).filter(function(x){ return !(tomb[x.id]&&tomb[x.id]>=(x.updatedAt||0)); });
+  }
+  var newer = (b.updatedAt||0) >= (a.updatedAt||0) ? b : a;
+  var out = {
+    candidates: unionById(a.candidates, b.candidates),
+    cohorts:    unionById(a.cohorts, b.cohorts),
+    // shared scalars/lists: take from the doc touched most recently
+    team: newer.team||a.team||b.team,
+    counsels: newer.counsels||a.counsels||b.counsels,
+    savedOptions: newer.savedOptions||a.savedOptions||b.savedOptions,
+    emailTemplates: newer.emailTemplates||a.emailTemplates||b.emailTemplates,
+    whatsapp: newer.whatsapp||a.whatsapp||b.whatsapp,
+    inviteText: newer.inviteText!=null?newer.inviteText:(a.inviteText!=null?a.inviteText:b.inviteText),
+    inviteAssoc: newer.inviteAssoc!=null?newer.inviteAssoc:(a.inviteAssoc!=null?a.inviteAssoc:b.inviteAssoc),
+    noReplyList: newer.noReplyList||a.noReplyList||b.noReplyList,
+    reportingDetails: newer.reportingDetails!=null?newer.reportingDetails:(a.reportingDetails!=null?a.reportingDetails:b.reportingDetails),
+    offerFiles: newer.offerFiles||a.offerFiles||b.offerFiles,
+    aiLessons: unionByTs_(a.aiLessons, b.aiLessons),
+    pendingMails: unionById(a.pendingMails, b.pendingMails),
+    aiReports: unionById(a.aiReports, b.aiReports),
+    deleted: Object.keys(tomb).map(function(id){ return {id:id, ts:tomb[id]}; }).sort(function(x,y){ return y.ts-x.ts; }).slice(0,1200),
+    updatedAt: Math.max(a.updatedAt||0, b.updatedAt||0)
+  };
+  return out;
+}
+function unionByTs_(la, lb){
+  var seen={}, out=[];
+  (la||[]).concat(lb||[]).forEach(function(x){ if(!x) return; var k=(x.ts||'')+'|'+(x.text||x); if(seen[k]) return; seen[k]=1; out.push(x); });
+  return out.slice(-60);
+}
 function readApplications(){
   var sh=SpreadsheetApp.openById(SHEET_ID).getSheetByName("Applications"); if(!sh) return [];
   var rows=sh.getDataRange().getValues(); if(rows.length<2) return [];
@@ -688,8 +741,8 @@ function aiLogReport_(done, byType, flagged){
     var line = "Processed "+done+" application(s)"+(parts.length?" ("+parts.join(", ")+")":"")+
       (flagged?"; flagged "+flagged+" for your attention":"")+".";
     var existing = st.aiReports.filter(function(r){ return r.day===dayKey; })[0];
-    if(existing){ existing.runs = (existing.runs||1)+1; existing.lines.push(line); existing.at = Date.now(); }
-    else { st.aiReports.push({ day:dayKey, at:Date.now(), runs:1, lines:[line] }); }
+    if(existing){ existing.runs = (existing.runs||1)+1; existing.lines.push(line); existing.at = Date.now(); existing.updatedAt = Date.now(); if(!existing.id) existing.id='rep_'+dayKey; }
+    else { st.aiReports.push({ id:'rep_'+dayKey, day:dayKey, at:Date.now(), runs:1, lines:[line], updatedAt:Date.now() }); }
     if(st.aiReports.length > 120) st.aiReports = st.aiReports.slice(-120);
     st.updatedAt = Date.now();
     writeState(JSON.stringify(st), st.updatedAt);

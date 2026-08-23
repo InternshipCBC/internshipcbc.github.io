@@ -59,7 +59,7 @@ th{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;c
 
   <aside style="width:250px;flex-shrink:0;background:var(--sbg);display:flex;flex-direction:column;z-index:100">
     <div style="padding:18px 16px 10px;display:flex;align-items:center;gap:12px">
-      <div style="{{ logoBoxStyle }}"><img src="{{ logoSrc }}" alt="Cohort" style="width:100%;height:100%;object-fit:contain" onerror="this.style.display='none'"></div>
+      <div style="{{ logoBoxStyle }}">{{ logoEl }}</div>
       <div style="min-width:0">
         <div style="color:#fff;font-size:17px;font-weight:800;font-family:var(--fd);line-height:1.15">Cohort</div>
         <div style="color:rgba(255,255,255,.35);font-size:8px;font-weight:700;letter-spacing:.15em;text-transform:uppercase">Chambers of Bharat Chugh</div>
@@ -1768,8 +1768,9 @@ class Component extends DCLogic {
       document.body.appendChild(s);
     });
   }
-  exportState(){ const d=this.data; return { candidates:d.candidates, cohorts:d.cohorts, team:d.team,
-    savedOptions:d.savedOptions, emailTemplates:d.emailTemplates, inviteText:d.inviteText, inviteAssoc:d.inviteAssoc,
+  exportState(){ const d=this.data; return { candidates:d.candidates, cohorts:d.cohorts, team:d.team, counsels:d.counsels,
+    savedOptions:d.savedOptions, emailTemplates:d.emailTemplates, whatsapp:d.whatsapp, inviteText:d.inviteText, inviteAssoc:d.inviteAssoc,
+    aiLessons:d.aiLessons, pendingMails:d.pendingMails, aiReports:d.aiReports,
     noReplyList:d.settings.noReplyList||[], reportingDetails:d.settings.reportingDetails, offerFiles:d.settings.offerFiles,
     deleted:d.deleted, updatedAt:d.updatedAt }; }
   mergeRemote(r){
@@ -1789,6 +1790,10 @@ class Component extends DCLogic {
       if(r.team) this.data.team=r.team;
       if(r.savedOptions) this.data.savedOptions=r.savedOptions;
       if(r.emailTemplates) this.data.emailTemplates=r.emailTemplates;
+      if(r.whatsapp) this.data.whatsapp=r.whatsapp;
+      if(r.counsels) this.data.counsels=r.counsels;
+      if(r.aiLessons) this.data.aiLessons=r.aiLessons;
+      if(r.aiReports) this.data.aiReports=r.aiReports;
       if(r.inviteText!=null) this.data.inviteText=r.inviteText;
       if(r.inviteAssoc!=null) this.data.inviteAssoc=r.inviteAssoc;
       if(r.noReplyList) this.data.settings.noReplyList=r.noReplyList;
@@ -3404,8 +3409,7 @@ class Component extends DCLogic {
       ...this.analyticsVM(), ...this.timelineVM(), ...this.playbookVM(), ...this.settingsVM(), ...this.drawerVM(),
       themeAttr:this.state.theme, themeIcon:this.state.theme==='dark'?'ph ph-sun':'ph ph-moon-stars',
       themeLabel:this.state.theme==='dark'?'Light mode':'Dark mode', toggleTheme:()=>this.toggleTheme(),
-      logoMono:(st.logoUrl&&st.logoUrl.trim())?'':'',
-      logoSrc:(st.logoUrl&&st.logoUrl.trim())||'logo.png',
+      logoEl:React.createElement('img',{src:(st.logoUrl&&st.logoUrl.trim())||'logo.png',alt:'Cohort',style:{width:'100%',height:'100%',objectFit:'contain'},onError:(e)=>{e.target.style.display='none';}}),
       logoBoxStyle:'width:38px;height:38px;border-radius:11px;flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center',
       nav:this.navModel(), pageTitle:meta[0], pageSub:meta[1],
       actingAs:this.actingAs, onActingAs:(e)=>this.onActingAs(e), teamNames:this.data.team||[],
