@@ -681,7 +681,7 @@ const AI_SYSTEM = [
 
 function installAiTrigger(){
   ScriptApp.getProjectTriggers().forEach(function(t){ if(t.getHandlerFunction()==="aiVetPending") ScriptApp.deleteTrigger(t); });
-  ScriptApp.newTrigger("aiVetPending").timeBased().everyMinutes(10).create();
+  ScriptApp.newTrigger("aiVetPending").timeBased().everyMinutes(15).create();
 }
 
 /** Called by the time trigger AND by the dashboard (doPost action:"vetPending"). Safe to call often. */

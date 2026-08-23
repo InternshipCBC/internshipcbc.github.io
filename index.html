@@ -1869,7 +1869,9 @@ class Component extends DCLogic {
         body:JSON.stringify({token,action:'saveState',updatedAt:this.data.updatedAt,state:JSON.stringify(this.exportState())})});
       this.data.settings.lastSync=Date.now();
       this.data.settings.lastSyncError='';
-      try{ fetch(url,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({token,action:'vetPending'})}); }catch(e){}
+      // Nudge server-side AI vetting at most once every 5 min (it also runs on its own 10-min trigger).
+      // Never on every sync — that burns Apps Script's daily urlfetch quota.
+      if(Date.now()-(this._lastVet||0)>300000){ this._lastVet=Date.now(); try{ fetch(url,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({token,action:'vetPending'})}); }catch(e){} }
       this.persist();
       this._syncing=false;
       this.setState({syncing:false,rev:this.state.rev+1});
