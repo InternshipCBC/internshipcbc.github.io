@@ -566,9 +566,18 @@ function uploadFile(body){
 }
 
 function stateSheet(){ var ss=SpreadsheetApp.openById(SHEET_ID); return ss.getSheetByName(STATE_SHEET)||ss.insertSheet(STATE_SHEET); }
-function readState(){ return stateSheet().getRange("A1").getValue()||""; }
+// State is stored in a Drive file (no 50k-char cell limit — a full cohort easily exceeds that).
+// The sheet keeps only the updatedAt stamp in B1 for quick verification.
+function stateFile_(){
+  var name="cohort_state.json";
+  var folder=DriveApp.getFolderById(CV_FOLDER_ID);
+  var it=folder.getFilesByName(name);
+  if(it.hasNext()) return it.next();
+  return folder.createFile(name, "", "application/json");
+}
+function readState(){ try{ return stateFile_().getBlob().getDataAsString()||""; }catch(e){ return stateSheet().getRange("A1").getValue()||""; } }
 function readUpdatedAt(){ return stateSheet().getRange("B1").getValue()||0; }
-function writeState(j,u){ var sh=stateSheet(); sh.getRange("A1").setValue(j||""); sh.getRange("B1").setValue(u||Date.now()); }
+function writeState(j,u){ stateFile_().setContent(j||""); stateSheet().getRange("B1").setValue(u||Date.now()); }
 /** Atomic read-modify-write of State under the script lock. fn(st) mutates st; return false to skip the write. */
 function withState_(fn){
   var lock = LockService.getScriptLock(); lock.waitLock(20000);
