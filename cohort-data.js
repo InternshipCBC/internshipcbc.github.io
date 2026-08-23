@@ -195,6 +195,14 @@ const MON_ABBR = {jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,sept:8,o
 const INTERNAL = ["internship.cbc@gmail.com", "bharatchugh.in", "contact@bharatchugh.in"];
 var SWEEP_DAYS = 60;
 
+/** Lower = sooner-starting cohort = higher intake priority. Past/undated sort last. */
+function cohortRankIntake_(month, year){
+  var mi = MONTHS.indexOf(String(month)), y = parseInt(year,10);
+  if(mi<0 || !y) return 999999;
+  var now = new Date(), nowRank = now.getFullYear()*12 + now.getMonth(), r = y*12 + mi;
+  return r < nowRank ? 500000 + r : r;
+}
+
 function installTrigger(){
   ScriptApp.getProjectTriggers().forEach(function(t){ ScriptApp.deleteTrigger(t); });
   ScriptApp.newTrigger("processInbox").timeBased().everyMinutes(5).create();
@@ -237,7 +245,13 @@ function processInbox(){
   while(Date.now() - start < 280000){
     var threads = GmailApp.search(q, 0, 100);
     if(!threads.length) break;
-    threads.sort(function(a,b){ return a.getMessages()[0].getDate() - b.getMessages()[0].getDate(); });
+    // PRIORITISE the soonest-starting cohorts first (e.g. October before January 2027); tie-break oldest email first.
+    threads.sort(function(a,b){
+      var pa=parseApplication(a.getMessages()[0].getSubject()||""), pb=parseApplication(b.getMessages()[0].getSubject()||"");
+      var ra=pa?cohortRankIntake_(pa.month,pa.year):999999, rb=pb?cohortRankIntake_(pb.month,pb.year):999999;
+      if(ra!==rb) return ra-rb;
+      return a.getMessages()[0].getDate() - b.getMessages()[0].getDate();
+    });
 
     for(var i=0;i<threads.length;i++){
       if(Date.now() - start > 280000) return;
@@ -626,9 +640,14 @@ function aiVetPending(){
     var head = rows[0];
     var aiCol = head.indexOf("AI");                       // one column stores the AI JSON; created if missing
     if(aiCol < 0){ aiCol = head.length; sh.getRange(1, aiCol+1).setValue("AI"); }
-    var done = 0;
-    for(var i=1; i<rows.length && done<AI_BATCH; i++){
-      if(rows[i][aiCol]) continue;                         // already vetted
+    var mCol = head.indexOf("Month"), yCol = head.indexOf("Year");
+    // PRIORITISATION: vet the soonest-starting cohorts first (e.g. October before January 2027).
+    var pending = [];
+    for(var i=1; i<rows.length; i++){ if(!rows[i][aiCol]) pending.push(i); }
+    pending.sort(function(a,b){ return cohortRank_(rows[a][mCol],rows[a][yCol]) - cohortRank_(rows[b][mCol],rows[b][yCol]); });
+    var done = 0, shortlisted = 0, flagged = 0, byType = {};
+    for(var p=0; p<pending.length && done<AI_BATCH; p++){
+      var i = pending[p];
       var subject = rows[i][head.indexOf("Subject")] || rows[i][head.indexOf("Name")] || "";
       var body    = rows[i][head.indexOf("Body")] || rows[i][head.indexOf("Email PDF")] || "";
       var from    = rows[i][head.indexOf("Email")] || "";
@@ -637,11 +656,44 @@ function aiVetPending(){
         if(out.type==="followup" && out.originalMissing) out = findOriginal(out, from);
         sh.getRange(i+1, aiCol+1).setValue(JSON.stringify(out));
         mergeAiIntoState(rows[i][head.indexOf("Key")] || from, out);
+        byType[out.type] = (byType[out.type]||0) + 1;
+        if(out.needsFix || out.originalMissing) flagged++;
         done++;
       }
     }
-    return {ok:true, vetted:done};
+    if(done) aiLogReport_(done, byType, flagged);
+    return {ok:true, vetted:done, byType:byType};
   } finally { lock.releaseLock(); }
+}
+
+/** Lower rank = sooner = higher priority. Past/undated cohorts sort last. */
+function cohortRank_(month, year){
+  var mi = MONTHS.indexOf(String(month));
+  var y = parseInt(year,10);
+  if(mi<0 || !y) return 999999;                          // unknown month/year → lowest priority
+  var now = new Date(), nowRank = now.getFullYear()*12 + now.getMonth();
+  var r = y*12 + mi;
+  return r < nowRank ? 500000 + r : r;                    // already-past months after all upcoming ones
+}
+
+/** Write a plain-English daily report into shared State (kept until the user deletes it). */
+function aiLogReport_(done, byType, flagged){
+  try{
+    var st = JSON.parse(readState()||"{}");
+    st.aiReports = st.aiReports || [];
+    var today = new Date();
+    var dayKey = today.getFullYear()+"-"+("0"+(today.getMonth()+1)).slice(-2)+"-"+("0"+today.getDate()).slice(-2);
+    var parts = [];
+    Object.keys(byType).forEach(function(k){ parts.push(byType[k]+" "+k); });
+    var line = "Processed "+done+" application(s)"+(parts.length?" ("+parts.join(", ")+")":"")+
+      (flagged?"; flagged "+flagged+" for your attention":"")+".";
+    var existing = st.aiReports.filter(function(r){ return r.day===dayKey; })[0];
+    if(existing){ existing.runs = (existing.runs||1)+1; existing.lines.push(line); existing.at = Date.now(); }
+    else { st.aiReports.push({ day:dayKey, at:Date.now(), runs:1, lines:[line] }); }
+    if(st.aiReports.length > 120) st.aiReports = st.aiReports.slice(-120);
+    st.updatedAt = Date.now();
+    writeState(JSON.stringify(st), st.updatedAt);
+  }catch(e){}
 }
 
 function aiClassify(text){

@@ -59,7 +59,7 @@ th{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;c
 
   <aside style="width:250px;flex-shrink:0;background:var(--sbg);display:flex;flex-direction:column;z-index:100">
     <div style="padding:18px 16px 10px;display:flex;align-items:center;gap:12px">
-      <div style="{{ logoBoxStyle }}">{{ logoMono }}</div>
+      <div style="{{ logoBoxStyle }}"><img src="{{ logoSrc }}" alt="Cohort" style="width:100%;height:100%;object-fit:contain" onerror="this.style.display='none'"></div>
       <div style="min-width:0">
         <div style="color:#fff;font-size:17px;font-weight:800;font-family:var(--fd);line-height:1.15">Cohort</div>
         <div style="color:rgba(255,255,255,.35);font-size:8px;font-weight:700;letter-spacing:.15em;text-transform:uppercase">Chambers of Bharat Chugh</div>
@@ -703,6 +703,25 @@ th{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;c
         <div style="display:flex;gap:3px;margin-bottom:12px;background:var(--bg);border-radius:9px;padding:3px;border:1px solid var(--bd);width:fit-content">
           <sc-for list="{{ aiTabs }}" as="t" hint-placeholder-count="2"><button onClick="{{ t.go }}" style="{{ t.style }}">{{ t.label }}<span style="{{ t.cntStyle }}">{{ t.cnt }}</span></button></sc-for>
         </div>
+
+        <sc-if value="{{ aiShowReports }}" hint-placeholder-val="{{ false }}">
+          <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+              <p style="font-size:12px;color:var(--t2);margin:0">Plain-English daily log of what the AI did \u2014 kept until you delete it.</p>
+              <sc-if value="{{ aiReports }}" hint-placeholder-val="{{ true }}"><button onClick="{{ clearReports }}" style="padding:6px 12px;border-radius:9px;font-size:11px;font-weight:700;background:var(--dnL);border:1.5px solid var(--dn);color:var(--dn)">Clear all</button></sc-if>
+            </div>
+            <sc-for list="{{ aiReports }}" as="r" hint-placeholder-count="0">
+              <div style="background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);box-shadow:var(--sh);padding:14px 18px">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px">
+                  <div style="font-weight:700;font-size:13px;font-family:var(--fd)"><i class="ph ph-calendar-check" style="color:var(--ac)"></i> {{ r.title }}</div>
+                  <button onClick="{{ r.onDelete }}" title="Delete this report" style="padding:4px 9px;border-radius:8px;font-size:11px;font-weight:700;background:var(--sf);border:1px solid var(--bd);color:var(--dn)"><i class="ph ph-trash"></i></button>
+                </div>
+                <sc-for list="{{ r.lines }}" as="l" hint-placeholder-count="0"><div style="font-size:12.5px;color:var(--t2);line-height:1.6;padding:3px 0 3px 16px;border-left:2px solid var(--acL)">{{ l.t }}</div></sc-for>
+              </div>
+            </sc-for>
+            <sc-if value="{{ aiReportsEmpty }}" hint-placeholder-val="{{ true }}"><div style="padding:36px;text-align:center;color:var(--t2);font-size:13px">No reports yet. As the AI processes applications, a daily summary appears here \u2014 how many it handled, what it did, and how many were flagged.</div></sc-if>
+          </div>
+        </sc-if>
 
         <sc-if value="{{ aiShowPending }}" hint-placeholder-val="{{ false }}">
           <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px">
@@ -1405,6 +1424,7 @@ class Component extends DCLogic {
     if(!d.team) d.team=['Bharat Sir','Mayank Sir','Pushp Sir'];
     if(!d.counsels) d.counsels=[{name:'Mayank Sir',email:''},{name:'Bharat Sir',email:''}];
     if(!d.aiLessons) d.aiLessons=[];
+    if(!d.aiReports) d.aiReports=[];
     if(!d.pendingMails) d.pendingMails=[];
     if(!d.savedOptions) d.savedOptions={};
     const so=d.savedOptions;
@@ -2188,6 +2208,7 @@ class Component extends DCLogic {
   }
   approveMail(pid){ const p=(this.data.pendingMails||[]).find(x=>x.id===pid); if(!p) return; this._deliverMail(p); this.data.pendingMails=this.data.pendingMails.filter(x=>x.id!==pid); this.save('Approved — email sent'); }
   rejectMail(pid){ const p=(this.data.pendingMails||[]).find(x=>x.id===pid); if(!p) return; const c=this.cand(p.cid); if(c) this.logHist(c,'Mail rejected (not sent): '+(p.tplName||p.template)); this.data.pendingMails=this.data.pendingMails.filter(x=>x.id!==pid); this.save('Rejected — not sent'); }
+  delReport(day){ this.data.aiReports=(this.data.aiReports||[]).filter(r=>r.day!==day); this.save('Report deleted'); }
   teachLesson(text){ text=(text||'').trim(); if(!text) return; this.data.aiLessons=this.data.aiLessons||[]; this.data.aiLessons.push({text,by:this.actingAs||'—',ts:Date.now()}); this.save('Noted — Qwen will remember that'); }
   exportCols(){ return ['Name','Email','Phone','Track','Mode','Year / PQE','Band','Programme','College','City','Source','Referred by','Score','App rubric','Interview score','Verdict','Stage','Outcome','NDA','Cohort']; }
   exportRow(c){
@@ -2398,11 +2419,16 @@ class Component extends DCLogic {
       onAiKey:(e)=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault&&e.preventDefault(); this.aiSend(); } },
       aiSend:()=>this.aiSend(), aiSendDisabled:!!this.state.aiBusy||!this.apiUrl(), aiPrompts:prompts,
       aiTab:this.state.aiTab||'chat',
-      aiTabs:[['chat','Chat'],['pending','Pending approvals']].map(t=>{ const on=(this.state.aiTab||'chat')===t[0]; const n=(this.data.pendingMails||[]).filter(x=>x.status==='flagged').length;
+      aiTabs:[['chat','Chat'],['pending','Pending approvals'],['reports','Reports']].map(t=>{ const on=(this.state.aiTab||'chat')===t[0]; const n=(this.data.pendingMails||[]).filter(x=>x.status==='flagged').length;
         return { label:t[1], go:()=>this.setState({aiTab:t[0]}), cnt:(t[0]==='pending'&&n)?String(n):'',
           cntStyle:(t[0]==='pending'&&n)?'margin-left:6px;background:var(--dn);color:#fff;padding:1px 7px;border-radius:20px;font-size:9px;font-weight:800':'display:none',
           style:'padding:7px 14px;border-radius:7px;font-size:12px;font-weight:600;white-space:nowrap;'+(on?'color:#fff;background:var(--acG)':'color:var(--t2)') }; }),
-      aiShowChat:(this.state.aiTab||'chat')==='chat', aiShowPending:this.state.aiTab==='pending',
+      aiShowChat:(this.state.aiTab||'chat')==='chat', aiShowPending:this.state.aiTab==='pending', aiShowReports:this.state.aiTab==='reports',
+      aiReports:(this.data.aiReports||[]).slice().reverse().map(r=>({
+        title:this.fmtDate(r.at)+(r.runs>1?(' · '+r.runs+' runs'):''),
+        lines:(r.lines||[]).map(t=>({t})), onDelete:()=>this.delReport(r.day) })),
+      aiReportsEmpty:(this.data.aiReports||[]).length===0,
+      clearReports:()=>{ this.ask('Clear all reports?','This removes every AI daily report on record.',()=>{ this.data.aiReports=[]; this.save('Reports cleared'); },{danger:true,okLabel:'Clear all'}); },
       aiPending:(this.data.pendingMails||[]).filter(x=>x.status==='flagged').map(p=>({
         name:p.name||p.to, to:p.to, tplName:p.tplName||p.template, subject:p.subject, issue:p.issue||'Flagged', preview:(p.text||'').slice(0,280)+((p.text||'').length>280?'…':''),
         onApprove:()=>this.approveMail(p.id), onReject:()=>this.rejectMail(p.id), onOpen:()=>{ this.openCand(p.cid); } })),
@@ -3376,8 +3402,9 @@ class Component extends DCLogic {
       ...this.analyticsVM(), ...this.timelineVM(), ...this.playbookVM(), ...this.settingsVM(), ...this.drawerVM(),
       themeAttr:this.state.theme, themeIcon:this.state.theme==='dark'?'ph ph-sun':'ph ph-moon-stars',
       themeLabel:this.state.theme==='dark'?'Light mode':'Dark mode', toggleTheme:()=>this.toggleTheme(),
-      logoMono:st.logoUrl?'':'C',
-      logoBoxStyle:'width:38px;height:38px;border-radius:11px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-family:var(--fd);font-weight:800;font-size:15px;color:#fff;box-shadow:0 4px 12px rgba(45,212,191,.3);'+(st.logoUrl?('background:url(\''+st.logoUrl+'\') center/cover no-repeat, var(--acG)'):'background:var(--acG)'),
+      logoMono:(st.logoUrl&&st.logoUrl.trim())?'':'',
+      logoSrc:(st.logoUrl&&st.logoUrl.trim())||'logo.png',
+      logoBoxStyle:'width:38px;height:38px;border-radius:11px;flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center',
       nav:this.navModel(), pageTitle:meta[0], pageSub:meta[1],
       actingAs:this.actingAs, onActingAs:(e)=>this.onActingAs(e), teamNames:this.data.team||[],
       syncNow:()=>this.syncNow(false), syncBusy:this.state.syncing,
