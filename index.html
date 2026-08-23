@@ -3126,7 +3126,7 @@ class Component extends DCLogic {
         try{ d=JSON.parse(r.result); }catch(e){ this.flash('That is not a valid JSON file'); return; }
         if(!d||!d.cohorts||!d.candidates){ this.flash('That is not a Cohort backup'); return; }
         this.ask('Restore this backup?','It replaces everything currently on this device with the file\u2019s contents ('+(d.cohorts||[]).length+' cohort(s), '+(d.candidates||[]).length+' candidate(s)). On the next sync it becomes the shared data for the team.',()=>{
-          this.data=d; this.load(); this.save('Backup restored'); },{danger:true,okLabel:'Replace and restore'});
+          this.data=d; this.persist(); this.load(); this.save('Backup restored'); },{danger:true,okLabel:'Replace and restore'});
       };
       r.readAsText(f); };
     inp.click();
