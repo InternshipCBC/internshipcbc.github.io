@@ -1102,6 +1102,9 @@ th{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;c
                 <sc-if value="{{ d.isAssoc }}" hint-placeholder-val="{{ false }}">
                   <div><label>Bar enrolment no.</label><input value="{{ d.barEnrol }}" onInput="{{ d.onBarEnrol }}" placeholder="e.g. D/1234/2022"></div>
                 </sc-if>
+                <sc-if value="{{ d.isIntern }}" hint-placeholder-val="{{ true }}">
+                  <div><label>Batch <span style="font-weight:400;color:var(--mu)">· grad year</span></label><input value="{{ d.gradYear }}" onInput="{{ d.onGradYear }}" placeholder="e.g. 2027"></div>
+                </sc-if>
                 <sc-if value="{{ d.isAssoc }}" hint-placeholder-val="{{ false }}">
                   <div><label>Year of graduation</label><input value="{{ d.gradYear }}" onInput="{{ d.onGradYear }}" placeholder="e.g. 2022"></div>
                 </sc-if>
@@ -2046,7 +2049,7 @@ class Component extends DCLogic {
   toggleSelAll(){ const ids=this.filtered().map(c=>c.id); const cur=new Set(this.state.sel||[]);
     const all=ids.length&&ids.every(i=>cur.has(i)); this.setState({sel:all?[]:ids}); }
 
-  FACETS=[['stage','Stage'],['track','Track'],['mode','Mode'],['band','Year'],['source','Source'],['college','College'],['city','City'],['referredBy','Referrer'],['ivResult','Interview'],['nda','NDA'],['fav','Starred']];
+  FACETS=[['stage','Stage'],['track','Track'],['mode','Mode'],['band','Year'],['source','Source'],['college','College'],['city','City'],['referredBy','Referrer'],['ivResult','Interview'],['nda','NDA'],['fav','Starred'],['flag','AI flag']];
   facetValues(k){
     const cc=this.cohCands();
     const uniq=(a)=>[...new Set(a.filter(Boolean))].sort();
@@ -2061,6 +2064,7 @@ class Component extends DCLogic {
     if(k==='ivResult') return [{v:'pass',l:'Cleared'},{v:'fail',l:'Not cleared'},{v:'noshow',l:'No-show'},{v:'pending',l:'Not marked'}];
     if(k==='nda') return [{v:'pending',l:'Awaited'},{v:'received',l:'E-copy received'},{v:'signed',l:'Signed & filed'}];
     if(k==='fav') return [{v:'yes',l:'Starred only'},{v:'no',l:'Not starred'}];
+    if(k==='flag') return [{v:'attention',l:'Needs attention'},{v:'followup',l:'Follow-up'},{v:'forward',l:'Forwarded'},{v:'automated',l:'Auto-mail'},{v:'fresh',l:'Fresh'}];
     return [];
   }
   facetLabel(k){ const f=this.FACETS.find(x=>x[0]===k); return f?f[1]:k; }
@@ -2081,11 +2085,13 @@ class Component extends DCLogic {
       case 'ivResult': return c.v==='pending'?!cd.interview.result:cd.interview.result===c.v;
       case 'nda': return (cd.nda.status||'pending')===c.v;
       case 'fav': return c.v==='yes'?!!cd.fav:!cd.fav;
+      case 'flag': return c.v==='attention' ? !!(cd.ai&&(cd.ai.originalMissing||cd.ai.type==='followup'||cd.ai.type==='forward')) : (cd.ai&&cd.ai.type===c.v);
       default: return true;
     }
   }
-  PIPE_TABS=[['all','All'],['applied','Applied'],['shortlisted','Shortlisted'],['interview','Interview'],['final','Finalists'],['joined','Joined'],['starred','Starred'],['rejected','Rejected']];
+  PIPE_TABS=[['all','All'],['applied','Applied'],['shortlisted','Shortlisted'],['interview','Interview'],['final','Finalists'],['joined','Joined'],['attention','Needs attention'],['starred','Starred'],['rejected','Rejected']];
   tabFilter(list,tab){
+    if(tab==='attention') return this.active(list).filter(c=>c.ai&&(c.ai.originalMissing||c.ai.type==='followup'||c.ai.type==='forward'));
     if(tab==='rejected') return list.filter(c=>this.isRejected(c));
     if(tab==='starred') return this.active(list).filter(c=>c.fav);
     if(tab==='all') return list;
@@ -2824,7 +2830,7 @@ class Component extends DCLogic {
   apList(tab){
     const cc=this.cohCands();
     if(tab==='pending') return this.active(cc).filter(c=>c.stage==='final'&&!(c.appr.mayank||c.appr.bypass));
-    if(tab==='approved') return this.active(cc).filter(c=>c.stage==='final'&&(c.appr.mayank||c.appr.bypass)).concat(cc.filter(c=>c.stage==='joined'));
+    if(tab==='approved') return this.active(cc).filter(c=>(c.stage==='final'||c.stage==='joined')&&(c.appr.mayank||c.appr.bypass));
     if(tab==='rejected') return cc.filter(c=>this.isRejected(c)&&['interview','final'].includes(c.stage));
     if(tab==='extensions') return this.active(cc).filter(c=>c.stage==='joined'&&c.ext.req&&c.ext.decision!=='declined');
     return [];
@@ -3313,18 +3319,28 @@ class Component extends DCLogic {
     this.save('Reminded '+pend.length+' counsel(s)'); }
   stopReviewReminders(id){ const c=this.cand(id); if(!c||!c.reviewReq) return; c.reviewReq.active=false; this.logHist(c,'Review reminders stopped'); this.save('Reminders stopped'); }
   // extension lifecycle
+  nextMonthLabel(coh){ if(!coh) return ''; let mi=this.MONTHS.indexOf(coh.month), y=coh.year; mi++; if(mi>11){mi=0;y++;} return this.MONTHS[mi]+' '+y; }
   raiseExtension(id){ const c=this.cand(id); if(!c) return;
-    c.ext.req=true; c.ext.requestedAt=Date.now(); c.ext.decision=''; 
-    this.logHist(c,'Extension requested by '+(this.actingAs||'—')+' → sent to Approvals');
-    this.save('Extension request raised — now in Approvals'); }
+    const coh=this.data.cohorts.find(x=>x.id===c.cohortId);
+    if(!c.ext.targetMonth) c.ext.targetMonth=this.nextMonthLabel(coh);   // default: the month after their current cohort
+    c.ext.req=true; c.ext.requestedAt=Date.now(); c.ext.decision='';
+    this.logHist(c,'Extension requested by '+(this.actingAs||'—')+' for '+c.ext.targetMonth+' → sent to Approvals');
+    this.save('Extension request raised for '+c.ext.targetMonth+' — now in Approvals'); }
+  setExtTarget(id,label){ const c=this.cand(id); if(!c) return; c.ext.targetMonth=label; c.updatedAt=Date.now(); this.save('Extension target set to '+label); }
   withdrawExtension(id){ const c=this.cand(id); if(!c) return; c.ext.req=false; c.ext.decision=''; c.ext.mayank=''; c.ext.bharat=''; this.logHist(c,'Extension request withdrawn'); this.save('Withdrawn'); }
+  ensureCohort(label){ const parts=String(label||'').split(' '); const month=parts[0], year=parseInt(parts[1])||new Date().getFullYear();
+    let coh=this.data.cohorts.find(x=>x.month===month&&x.year===year);
+    if(!coh){ coh=this.mkCohort(month,year,'active'); this.data.cohorts.push(coh); } return coh; }
+  extendIntoTarget(c){ if(!c.ext.targetMonth) return; const coh=this.ensureCohort(c.ext.targetMonth);
+    if(c.ext.addedTo===coh.id) return; c.ext.addedTo=coh.id;
+    this.logHist(c,'Extension approved — carried into '+c.ext.targetMonth); }
   setExtAppr(id,who){ const c=this.cand(id); if(!c) return;
     c.ext[who]=c.ext[who]==='ok'?'':'ok';
-    if(c.ext.mayank==='ok'&&c.ext.decision!=='approved'){ c.ext.decision='approved'; this.logHist(c,'Extension APPROVED'); this.sendCandidateMail(id,'ext_approved'); }
+    if(c.ext.mayank==='ok'&&c.ext.decision!=='approved'){ c.ext.decision='approved'; this.extendIntoTarget(c); this.logHist(c,'Extension APPROVED'); this.sendCandidateMail(id,'ext_approved'); }
     else this.logHist(c,who+' extension sign-off '+(c.ext[who]?'given':'cleared'));
     this.save(null); }
   bypassExtension(id){ this.ask('Bypass extension approval','Record a bypass of Mayank Sir\u2019s sign-off for this extension. A reason is required.',(reason)=>{
-    const c=this.cand(id); if(!c) return; c.ext.mayank='bypassed'; c.ext.decision='approved'; c.ext.bypass={by:this.actingAs||'—',reason,ts:Date.now()};
+    const c=this.cand(id); if(!c) return; c.ext.mayank='bypassed'; c.ext.decision='approved'; c.ext.bypass={by:this.actingAs||'—',reason,ts:Date.now()}; this.extendIntoTarget(c);
     this.logHist(c,'Extension bypassed: '+reason); this.save('Extension bypassed'); this.sendCandidateMail(id,'ext_approved'); },{needsReason:true,okLabel:'Record bypass'}); }
   declineExtension(id){ const c=this.cand(id); if(!c) return; c.ext.decision='declined'; c.ext.mayank=''; this.logHist(c,'Extension declined'); this.save('Extension declined'); }
   setExtStipend(id,v){ const c=this.cand(id); if(!c) return; c.ext.stipend=v; if(v==='yes'&&!c.ext.stipendAmount) c.ext.stipendAmount=11000; this.logHist(c,'Extension stipend: '+v); this.save(null); }
