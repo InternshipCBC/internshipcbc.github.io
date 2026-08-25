@@ -601,7 +601,7 @@ th{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;c
           <div style="overflow-x:auto">
             <table style="width:100%;border-collapse:collapse;min-width:880px">
               <thead><tr>
-                <sc-for list="{{ extCols }}" as="h" hint-placeholder-count="6"><th onClick="{{ h.onSort }}" style="{{ h.style }}">{{ h.label }}<span style="{{ h.arrowStyle }}">{{ h.arrow }}</span></th></sc-for>
+                <sc-for list="{{ extCols }}" as="h" hint-placeholder-count="7"><th onClick="{{ h.onSort }}" style="{{ h.style }}">{{ h.label }}<span style="{{ h.arrowStyle }}">{{ h.arrow }}</span></th></sc-for>
                 <th style="padding:10px 16px 10px 10px">Stipend</th>
               </tr></thead>
               <tbody>
@@ -611,6 +611,7 @@ th{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;c
                     <td style="padding:10px;border-bottom:1px solid var(--bd)"><span style="{{ r.modePrefStyle }}">{{ r.modePrefLabel }}</span><span style="{{ r.modeArrowStyle }}">{{ r.modeArrow }}</span><span style="{{ r.modeStyle }}">{{ r.modeLabel }}</span></td>
                     <td style="padding:10px;border-bottom:1px solid var(--bd);font-size:13px">{{ r.reviewLabel }}</td>
                     <td style="padding:10px;border-bottom:1px solid var(--bd);text-align:right"><span style="{{ r.reviewStyle }}">{{ r.reviewScore }}</span></td>
+                    <td style="padding:10px;border-bottom:1px solid var(--bd)"><select value="{{ r.targetMonth }}" onChange="{{ r.onTarget }}" disabled="{{ r.targetDisabled }}" style="padding:6px 9px;font-size:12px;width:auto;min-width:120px"><sc-for list="{{ r.targetOpts }}" as="m" hint-placeholder-count="3"><option value="{{ m }}">{{ m }}</option></sc-for></select></td>
                     <td style="padding:10px;border-bottom:1px solid var(--bd)"><button onClick="{{ r.onReq }}" title="{{ r.reqTitle }}" style="{{ r.reqStyle }}">{{ r.reqLabel }}</button></td>
                     <td style="padding:10px;border-bottom:1px solid var(--bd)"><span style="{{ r.decStyle }}">{{ r.decLabel }}</span></td>
                     <td style="padding:10px 16px 10px 10px;border-bottom:1px solid var(--bd);font-size:12.5px;font-weight:700">{{ r.stipLabel }}</td>
@@ -2841,7 +2842,9 @@ class Component extends DCLogic {
     if(tab==='pending') return this.active(cc).filter(c=>c.stage==='final'&&!(c.appr.mayank||c.appr.bypass));
     if(tab==='approved') return this.active(cc).filter(c=>(c.stage==='final'||c.stage==='joined')&&(c.appr.mayank||c.appr.bypass));
     if(tab==='rejected') return cc.filter(c=>this.isRejected(c)&&['interview','final'].includes(c.stage));
-    if(tab==='extensions') return this.active(cc).filter(c=>c.stage==='joined'&&c.ext.req&&c.ext.decision!=='declined');
+    if(tab==='extensions'){ const lbl=(this.cohort||{}).label||'';
+      // Extension approvals live under the TARGET month's Approvals, not the intern's current cohort.
+      return this.active(this.data.candidates||[]).filter(c=>c.stage==='joined'&&c.ext.req&&c.ext.decision!=='declined'&&(c.ext.targetMonth||'')===lbl); }
     return [];
   }
   /* ---------- generic table sort (click heading, arrow like LegalDesk) ---------- */
@@ -3329,6 +3332,7 @@ class Component extends DCLogic {
   stopReviewReminders(id){ const c=this.cand(id); if(!c||!c.reviewReq) return; c.reviewReq.active=false; this.logHist(c,'Review reminders stopped'); this.save('Reminders stopped'); }
   // extension lifecycle
   nextMonthLabel(coh){ if(!coh) return ''; let mi=this.MONTHS.indexOf(coh.month), y=coh.year; mi++; if(mi>11){mi=0;y++;} return this.MONTHS[mi]+' '+y; }
+  monthPickList(){ const now=new Date(); const out=[]; for(let k=0;k<14;k++){ const d=new Date(now.getFullYear(),now.getMonth()+k,1); out.push(this.MONTHS[d.getMonth()]+' '+d.getFullYear()); } return out; }
   raiseExtension(id){ const c=this.cand(id); if(!c) return;
     const coh=this.data.cohorts.find(x=>x.id===c.cohortId);
     if(!c.ext.targetMonth) c.ext.targetMonth=this.nextMonthLabel(coh);   // default: the month after their current cohort
@@ -3425,10 +3429,14 @@ class Component extends DCLogic {
         reqTitle:c.ext.req?'Withdraw the extension request':'Raise an extension request → goes to Approvals',
         decLabel:dec==='approved'?'Extension approved':(dec==='declined'?'Declined':(c.ext.req?'Pending sign-off':'—')),
         decStyle:this.pill(dec==='approved'?'var(--okL)':(dec==='declined'?'var(--dnL)':(c.ext.req?'var(--wnL)':'var(--sf2)')),dec==='approved'?'var(--ok)':(dec==='declined'?'var(--dn)':(c.ext.req?'var(--wn)':'var(--t2)'))),
-        stipLabel:c.ext.stipend==='yes'?('Stipend \u20b9'+(c.ext.stipendAmount||11000).toLocaleString('en-IN')):(dec==='approved'?'No stipend':'—') };
+        stipLabel:c.ext.stipend==='yes'?('Stipend \u20b9'+(c.ext.stipendAmount||11000).toLocaleString('en-IN')):(dec==='approved'?'No stipend':'—'),
+        targetMonth:c.ext.targetMonth||this.nextMonthLabel(this.data.cohorts.find(x=>x.id===c.cohortId)),
+        targetOpts:this.monthPickList(),
+        onTarget:(e)=>this.setExtTarget(c.id,e.target.value),
+        targetDisabled:dec==='approved' };
     });
     return { pageExtensions:this.state.page==='extensions', extRows:rows, extEmpty:rows.length===0,
-      extCols:[this.tsortHdr('extensions','name','Intern'),this.tsortHdr('extensions','mode','Mode'),this.tsortHdr('extensions','review','Reviews'),this.tsortHdr('extensions','review','Review score','right'),this.tsortHdr('extensions','req','Extension request'),this.tsortHdr('extensions','decision','Decision')],
+      extCols:[this.tsortHdr('extensions','name','Intern'),this.tsortHdr('extensions','mode','Mode'),this.tsortHdr('extensions','review','Reviews'),this.tsortHdr('extensions','review','Review score','right'),this.tsortHdr('extensions','target','Extend into'),this.tsortHdr('extensions','req','Extension request'),this.tsortHdr('extensions','decision','Decision')],
       extIntro:'Interns you have sent for review appear here. Raise an extension request to send it to Approvals — you can escalate even before every counsel has reviewed.',
       extExport:()=>this.exportExcel(list,'Cohort_extensions') };
   }
