@@ -1894,14 +1894,23 @@ class Component extends DCLogic {
     this.setState({syncing:true});
     const t0=Date.now();
     try{
-      const remote=await this.jsonpGet(url+'?token='+encodeURIComponent(token)+'&action=all&callback=?');
+      const remote=await this.jsonpGet(url+'?token='+encodeURIComponent(token)+'&action=state&callback=?');
       if(remote&&remote.error) throw new Error('Endpoint returned: '+remote.error);
       let added=0;
       if(remote){
         let rs=remote.state;
         if(typeof rs==='string'){ try{ rs=JSON.parse(rs); }catch(e){ rs=null; } }
         if(rs) this.mergeRemote(rs);
-        added=this.importApplications(remote.applications||[]);
+        // Applications pulled in pages so a large sheet never stalls the sync.
+        let off=0, guard=0;
+        while(guard++<60){
+          let pg=null; try{ pg=await this.jsonpGet(url+'?token='+encodeURIComponent(token)+'&action=apps&offset='+off+'&callback=?'); }catch(e){ break; }
+          const apps=(pg&&pg.applications)||[];
+          if(!apps.length) break;
+          added+=this.importApplications(apps);
+          if(apps.length<200) break;
+          off+=apps.length;
+        }
       }
       this.touchDoc();
       const _stamp=this.data.updatedAt;
@@ -1913,7 +1922,7 @@ class Component extends DCLogic {
       for(let _a=0; _a<6 && !_confirmed; _a++){
         await new Promise(r=>setTimeout(r, _a===0?2500:3500));
         try{
-          const chk=await this.jsonpGet(url+'?token='+encodeURIComponent(token)+'&action=all&callback=?');
+          const chk=await this.jsonpGet(url+'?token='+encodeURIComponent(token)+'&action=ping&callback=?');
           if(chk&&chk.error){ _verr=chk.error; continue; }
           if(((chk&&chk.updatedAt)||0) >= _stamp-2000){ _confirmed=true; }
         }catch(ve){ _verr=(ve&&ve.message)||String(ve); }

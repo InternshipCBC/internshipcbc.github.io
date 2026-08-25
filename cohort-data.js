@@ -203,6 +203,15 @@ function cohortRankIntake_(month, year){
   return r < nowRank ? 500000 + r : r;
 }
 
+function isPastMonth_(month, year){ return cohortRankIntake_(month, year) >= 500000; }
+// Auto-acknowledgements for a cohort stop from the 15th of the PRECEDING month (e.g. on 15 Aug, Sept closes),
+// and of course for any month already begun/passed.
+function isClosedForIntake_(month, year){
+  var mi = MONTHS.indexOf(String(month)), y = parseInt(year,10);
+  if(mi<0 || !y) return false;
+  var cutoff = new Date(y, mi-1, 15, 0, 0, 0);   // 15th of the month before the cohort month
+  return new Date() >= cutoff;
+}
 function installTrigger(){
   ScriptApp.getProjectTriggers().forEach(function(t){ ScriptApp.deleteTrigger(t); });
   ScriptApp.newTrigger("processInbox").timeBased().everyMinutes(5).create();
@@ -236,7 +245,7 @@ function precreateLabels(){
 function processInbox(){
   var sheet   = SpreadsheetApp.openById(SHEET_ID).getSheetByName("Applications") || setupSheet();
   var folder  = DriveApp.getFolderById(CV_FOLDER_ID);
-  var q = 'newer_than:400d to:internship.cbc@gmail.com -label:Status/New -label:Status/Needs-fix -label:Status/Superseded';
+  var q = 'has:attachment newer_than:400d to:internship.cbc@gmail.com -label:Status/New -label:Status/Needs-fix -label:Status/Superseded';
   var start = Date.now();
   var quota = MailApp.getRemainingDailyQuota();
   var reserve = 5;
@@ -258,6 +267,9 @@ function processInbox(){
       var th = threads[i];
       var msgs = th.getMessages();
       var msg = msgs[msgs.length-1];
+      // Only create an ID from a real application — i.e. an email that carries attachments (CV/cover), never a bare follow-up.
+      var hasAtt = false; try{ hasAtt = msg.getAttachments({includeInlineImages:false}).length > 0; }catch(e){}
+      if(!hasAtt){ label(th,"Status/Superseded"); continue; }
       var subjBody = (msg.getSubject()||"") + "  " + fullBody(msg);
 
       var origin = resolveApplicant(msg);
@@ -288,6 +300,8 @@ function processInbox(){
       else { sheet.appendRow(row); _keyMap[key]={rowIndex:sheet.getLastRow(), date:msg.getDate().getTime()}; }
 
       label(th,"Status/New");
+      // Stop auto-acknowledging once intake for that month has closed (from the 15th of the preceding month).
+      if(isClosedForIntake_(p.month, p.year)) continue;
       if(quota > reserve && !alreadyAcked(email, p)){ sendAck(origin, p); recordAck(email, p); quota--; }
     }
   }
@@ -486,6 +500,13 @@ function doGet(e){
   if((p.token||"") !== API_TOKEN) return reply(e, {error:"unauthorized"});
   if(p.action === "aiChat") return reply(e, (typeof aiChatFn==="function") ? aiChatFn(p.q, p.cohort) : {error:"AI.gs not installed"});
   if(p.action === "vetMail") return reply(e, (typeof aiVetMailFn==="function") ? aiVetMailFn(p.subject, p.body, p.ctx) : {error:"AI.gs not installed"});
+  if(p.action === "lastUpload"){
+    var up = PropertiesService.getScriptProperties().getProperty("upl_"+p.id+"_"+p.slot);
+    return reply(e, up ? {ok:true, url:up} : {ok:false});
+  }
+  if(p.action === "ping") return reply(e, { ok:true, updatedAt: readUpdatedAt() });
+  if(p.action === "state") return reply(e, { ok:true, state: readState(), updatedAt: readUpdatedAt() });
+  if(p.action === "apps") return reply(e, { ok:true, applications: readApplications(parseInt(p.offset,10)||0, 200), offset: parseInt(p.offset,10)||0 });
   return reply(e, { ok:true, state: readState(), applications: readApplications(), updatedAt: readUpdatedAt() });
 }
 /** JSONP-aware: a ?callback= wraps the JSON so a <script> tag can read it cross-origin. */
@@ -559,6 +580,8 @@ function uploadFile(body){
   f.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
   var url = f.getUrl();
   var field = {cv:"cvUrl", cover:"clUrl", nda:"ndaUrl", govtid:"govtIdUrl", other:"otherUrl"}[body.slot] || "otherUrl";
+  // Stash the link so the dashboard can read it straight back (works even if the candidate isn't on the server yet).
+  try{ PropertiesService.getScriptProperties().setProperty("upl_"+body.id+"_"+body.slot, url); }catch(e){}
   withState_(function(st){
     (st.candidates||[]).forEach(function(c){ if(c.id===body.id){ c[field]=url; c.updatedAt=Date.now(); } });
   });
@@ -641,10 +664,13 @@ function unionByTs_(la, lb){
   (la||[]).concat(lb||[]).forEach(function(x){ if(!x) return; var k=(x.ts||'')+'|'+(x.text||x); if(seen[k]) return; seen[k]=1; out.push(x); });
   return out.slice(-60);
 }
-function readApplications(){
+function readApplications(offset, limit){
   var sh=SpreadsheetApp.openById(SHEET_ID).getSheetByName("Applications"); if(!sh) return [];
-  var rows=sh.getDataRange().getValues(); if(rows.length<2) return [];
-  var head=rows.shift();
+  var last=sh.getLastRow(); if(last<2) return [];
+  var head=sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0];
+  var start=2+(offset||0); if(start>last) return [];
+  var n = limit ? Math.min(limit, last-start+1) : (last-start+1);
+  var rows=sh.getRange(start,1,n,sh.getLastColumn()).getValues();
   return rows.map(function(r){ var o={}; head.forEach(function(h,i){ o[h]=r[i]; }); return o; });
 }
 function setStatus(email,status){

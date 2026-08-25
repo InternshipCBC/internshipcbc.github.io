@@ -353,8 +353,10 @@ th{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;c
             <table style="width:100%;border-collapse:collapse;min-width:1040px">
               <thead><tr>
                 <th style="padding:10px 10px 10px 16px;width:34px"><span onClick="{{ ivToggleAll }}" style="{{ ivSelAllStyle }}" title="Select all in view">{{ ivSelAllMark }}</span></th>
-                <th style="padding:10px">Candidate</th><th style="padding:10px">Mode</th><th style="padding:10px">Date</th><th style="padding:10px">Time</th>
-                <th style="padding:10px">Interviewer</th><th style="padding:10px">Link / room</th><th style="padding:10px;text-align:right">Marks</th><th style="padding:10px">Verdict</th><th style="padding:10px 16px 10px 10px"></th>
+                <sc-for list="{{ ivCols }}" as="h" hint-placeholder-count="4"><th onClick="{{ h.onSort }}" style="{{ h.style }}">{{ h.label }}<span style="{{ h.arrowStyle }}">{{ h.arrow }}</span></th></sc-for>
+                <th style="padding:10px">Interviewer</th><th style="padding:10px">Link / room</th>
+                <sc-for list="{{ ivCols2 }}" as="h" hint-placeholder-count="2"><th onClick="{{ h.onSort }}" style="{{ h.style }}">{{ h.label }}<span style="{{ h.arrowStyle }}">{{ h.arrow }}</span></th></sc-for>
+                <th style="padding:10px 16px 10px 10px"></th>
               </tr></thead>
               <tbody>
                 <sc-for list="{{ ivRows }}" as="r" hint-placeholder-count="4">
@@ -407,7 +409,7 @@ th{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;c
             <div style="overflow-x:auto">
               <table style="width:100%;border-collapse:collapse;min-width:1000px">
                 <thead><tr>
-                  <th style="padding:10px 10px 10px 16px">Intern</th><th style="padding:10px">Mode</th><th style="padding:10px;text-align:right">Review</th>
+                  <sc-for list="{{ apExtCols }}" as="h" hint-placeholder-count="3"><th onClick="{{ h.onSort }}" style="{{ h.style }}">{{ h.label }}<span style="{{ h.arrowStyle }}">{{ h.arrow }}</span></th></sc-for>
                   <th style="padding:10px">Mayank Sir <span style="color:var(--dn)">*</span></th><th style="padding:10px">Bharat Sir</th><th style="padding:10px">Decision</th>
                   <th style="padding:10px">Stipend</th><th style="padding:10px 16px 10px 10px"></th>
                 </tr></thead>
@@ -1100,6 +1102,9 @@ th{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;c
                 <sc-if value="{{ d.isAssoc }}" hint-placeholder-val="{{ false }}">
                   <div><label>Bar enrolment no.</label><input value="{{ d.barEnrol }}" onInput="{{ d.onBarEnrol }}" placeholder="e.g. D/1234/2022"></div>
                 </sc-if>
+                <sc-if value="{{ d.isIntern }}" hint-placeholder-val="{{ true }}">
+                  <div><label>Batch <span style="font-weight:400;color:var(--mu)">· grad year</span></label><input value="{{ d.gradYear }}" onInput="{{ d.onGradYear }}" placeholder="e.g. 2027"></div>
+                </sc-if>
                 <sc-if value="{{ d.isAssoc }}" hint-placeholder-val="{{ false }}">
                   <div><label>Year of graduation</label><input value="{{ d.gradYear }}" onInput="{{ d.onGradYear }}" placeholder="e.g. 2022"></div>
                 </sc-if>
@@ -1717,7 +1722,7 @@ class Component extends DCLogic {
       {k:'shortlisted',l:'Shortlisted',i:'ph ph-list-checks',c:byStage('shortlisted')||''},
       {k:'interviews',l:'Interview',i:'ph ph-calendar-dots',c:byStage('interview')||''},
       {k:'approvals',l:'Approvals',i:'ph ph-seal-check',c:apprPending||''},
-      {k:'onboarding',l:'Onboarding',i:'ph ph-user-check',c:byStage('final')||''},
+      {k:'onboarding',l:'Onboarding',i:'ph ph-user-check',c:act.filter(c=>c.stage==='final'&&(c.appr.mayank||c.appr.bypass)).length||''},
       {k:'running',l:'Running Cohort',i:'ph ph-users-three',sep:'Interns',c:running||''},
       {k:'extensions',l:'Extensions',i:'ph ph-arrow-line-right',c:extPending||''},
       {k:'analytics',l:'Analytics',i:'ph ph-chart-bar',sep:'Insights',c:''},
@@ -1800,6 +1805,7 @@ class Component extends DCLogic {
     (r.cohorts||[]).forEach(rc=>{ if(tomb[rc.id]&&tomb[rc.id]>=(rc.updatedAt||0)) return; const l=cohById[rc.id];
       if(!l||(rc.updatedAt||0)>(l.updatedAt||0)) cohById[rc.id]=rc; });
     this.data.cohorts=Object.values(cohById).filter(c=>!(tomb[c.id]&&tomb[c.id]>=(c.updatedAt||0)));
+    this.dedupeCohorts();
     if((r.updatedAt||0)>(this.data.updatedAt||0)){
       if(r.team) this.data.team=r.team;
       if(r.savedOptions) this.data.savedOptions=r.savedOptions;
@@ -1818,6 +1824,28 @@ class Component extends DCLogic {
     }
     this.data.deleted=Object.keys(tomb).map(id=>({id,ts:tomb[id]})).sort((a,b)=>b.ts-a.ts).slice(0,800);
   }
+  // Collapse duplicate cohorts for the same month+year (backup + Gmail-intake can create separate ids).
+  // Keep the oldest-created as canonical, re-point candidates, tombstone the rest.
+  dedupeCohorts(){
+    const byKey={};
+    (this.data.cohorts||[]).forEach(c=>{ const k=String(c.month).toLowerCase()+'|'+c.year; (byKey[k]=byKey[k]||[]).push(c); });
+    let changed=false;
+    Object.values(byKey).forEach(group=>{
+      if(group.length<2) return;
+      group.sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
+      const keep=group[0];
+      // keep the most advanced status/deadlines if a later one closed it
+      group.slice(1).forEach(dup=>{
+        (this.data.candidates||[]).forEach(cd=>{ if(cd.cohortId===dup.id){ cd.cohortId=keep.id; cd.updatedAt=Date.now(); } });
+        if(dup.status==='closed') keep.status='closed';
+        this.data.deleted.push({id:dup.id,ts:Date.now()});
+        changed=true;
+      });
+      keep.updatedAt=Date.now();
+    });
+    if(changed){ const dead=new Set(this.data.deleted.map(t=>t.id)); this.data.cohorts=this.data.cohorts.filter(c=>!dead.has(c.id)); }
+    return changed;
+  }
   importApplications(apps){
     let added=0;
     const tomb=new Set((this.data.deleted||[]).map(t=>t.id));
@@ -1828,6 +1856,8 @@ class Component extends DCLogic {
       let coh=this.data.cohorts.find(c=>String(c.month).toLowerCase()===String(month).toLowerCase()&&String(c.year)===String(year));
       if(!coh){ coh=this.mkCohort(this.MONTHS.find(m=>m.toLowerCase()===String(month).toLowerCase())||String(month),parseInt(year)||new Date().getFullYear(),'active'); this.data.cohorts.push(coh); }
       const key=(email.toLowerCase()+'|'+coh.id);
+      // don't resurrect a candidate the team deleted
+      if(this._importedKeys&&this._importedKeys.has(key)) return;
       if(this._importedKeys&&this._importedKeys.has(key)) return;
       const dup=(this.data.candidates||[]).find(c=>c.cohortId===coh.id&&(c.email||'').toLowerCase()===email.toLowerCase());
       if(dup){
@@ -1864,14 +1894,23 @@ class Component extends DCLogic {
     this.setState({syncing:true});
     const t0=Date.now();
     try{
-      const remote=await this.jsonpGet(url+'?token='+encodeURIComponent(token)+'&action=all&callback=?');
+      const remote=await this.jsonpGet(url+'?token='+encodeURIComponent(token)+'&action=state&callback=?');
       if(remote&&remote.error) throw new Error('Endpoint returned: '+remote.error);
       let added=0;
       if(remote){
         let rs=remote.state;
         if(typeof rs==='string'){ try{ rs=JSON.parse(rs); }catch(e){ rs=null; } }
         if(rs) this.mergeRemote(rs);
-        added=this.importApplications(remote.applications||[]);
+        // Applications pulled in pages so a large sheet never stalls the sync.
+        let off=0, guard=0;
+        while(guard++<60){
+          let pg=null; try{ pg=await this.jsonpGet(url+'?token='+encodeURIComponent(token)+'&action=apps&offset='+off+'&callback=?'); }catch(e){ break; }
+          const apps=(pg&&pg.applications)||[];
+          if(!apps.length) break;
+          added+=this.importApplications(apps);
+          if(apps.length<200) break;
+          off+=apps.length;
+        }
       }
       this.touchDoc();
       const _stamp=this.data.updatedAt;
@@ -1883,7 +1922,7 @@ class Component extends DCLogic {
       for(let _a=0; _a<6 && !_confirmed; _a++){
         await new Promise(r=>setTimeout(r, _a===0?2500:3500));
         try{
-          const chk=await this.jsonpGet(url+'?token='+encodeURIComponent(token)+'&action=all&callback=?');
+          const chk=await this.jsonpGet(url+'?token='+encodeURIComponent(token)+'&action=ping&callback=?');
           if(chk&&chk.error){ _verr=chk.error; continue; }
           if(((chk&&chk.updatedAt)||0) >= _stamp-2000){ _confirmed=true; }
         }catch(ve){ _verr=(ve&&ve.message)||String(ve); }
@@ -2019,7 +2058,7 @@ class Component extends DCLogic {
   toggleSelAll(){ const ids=this.filtered().map(c=>c.id); const cur=new Set(this.state.sel||[]);
     const all=ids.length&&ids.every(i=>cur.has(i)); this.setState({sel:all?[]:ids}); }
 
-  FACETS=[['stage','Stage'],['track','Track'],['mode','Mode'],['band','Year'],['source','Source'],['college','College'],['city','City'],['referredBy','Referrer'],['ivResult','Interview'],['nda','NDA'],['fav','Starred']];
+  FACETS=[['stage','Stage'],['track','Track'],['mode','Mode'],['band','Year'],['source','Source'],['college','College'],['city','City'],['referredBy','Referrer'],['ivResult','Interview'],['nda','NDA'],['fav','Starred'],['flag','AI flag']];
   facetValues(k){
     const cc=this.cohCands();
     const uniq=(a)=>[...new Set(a.filter(Boolean))].sort();
@@ -2034,6 +2073,7 @@ class Component extends DCLogic {
     if(k==='ivResult') return [{v:'pass',l:'Cleared'},{v:'fail',l:'Not cleared'},{v:'noshow',l:'No-show'},{v:'pending',l:'Not marked'}];
     if(k==='nda') return [{v:'pending',l:'Awaited'},{v:'received',l:'E-copy received'},{v:'signed',l:'Signed & filed'}];
     if(k==='fav') return [{v:'yes',l:'Starred only'},{v:'no',l:'Not starred'}];
+    if(k==='flag') return [{v:'attention',l:'Needs attention'},{v:'followup',l:'Follow-up'},{v:'forward',l:'Forwarded'},{v:'automated',l:'Auto-mail'},{v:'fresh',l:'Fresh'}];
     return [];
   }
   facetLabel(k){ const f=this.FACETS.find(x=>x[0]===k); return f?f[1]:k; }
@@ -2054,11 +2094,13 @@ class Component extends DCLogic {
       case 'ivResult': return c.v==='pending'?!cd.interview.result:cd.interview.result===c.v;
       case 'nda': return (cd.nda.status||'pending')===c.v;
       case 'fav': return c.v==='yes'?!!cd.fav:!cd.fav;
+      case 'flag': return c.v==='attention' ? !!(cd.ai&&(cd.ai.originalMissing||cd.ai.type==='followup'||cd.ai.type==='forward')) : (cd.ai&&cd.ai.type===c.v);
       default: return true;
     }
   }
-  PIPE_TABS=[['all','All'],['applied','Applied'],['shortlisted','Shortlisted'],['interview','Interview'],['final','Finalists'],['joined','Joined'],['starred','Starred'],['rejected','Rejected']];
+  PIPE_TABS=[['all','All'],['applied','Applied'],['shortlisted','Shortlisted'],['interview','Interview'],['final','Finalists'],['joined','Joined'],['attention','Needs attention'],['starred','Starred'],['rejected','Rejected']];
   tabFilter(list,tab){
+    if(tab==='attention') return this.active(list).filter(c=>c.ai&&(c.ai.originalMissing||c.ai.type==='followup'||c.ai.type==='forward'));
     if(tab==='rejected') return list.filter(c=>this.isRejected(c));
     if(tab==='starred') return this.active(list).filter(c=>c.fav);
     if(tab==='all') return list;
@@ -2177,9 +2219,21 @@ class Component extends DCLogic {
       r.onload=()=>{
         const b64=String(r.result).split(',')[1]||'';
         this.flash('Uploading "'+f.name+'" to Drive…');
+        const u=this.apiUrl()+'?token='+encodeURIComponent(this.data.settings.apiToken||'')+'&action=uploadFile&callback=?';
+        // send the file via a POST (no-cors), then read the resulting link back via JSONP and apply it locally,
+        // so a manual candidate not yet on the server still gets its Drive link.
         this.post({action:'uploadFile',id,slot,name:f.name,mime:f.type||'application/octet-stream',dataBase64:b64,
           who:c.name||'Candidate',month:((this.data.cohorts.find(x=>x.id===c.cohortId)||{}).label||'')})
-          .then(()=>{ this.logHist(c,'Uploaded '+slot+': '+f.name); this.save('Uploaded — the link appears on the next sync'); setTimeout(()=>this.syncNow(true),6000); });
+          .then(()=>{
+            const field={cv:'cvUrl',cover:'clUrl',nda:'ndaUrl',govtid:'govtIdUrl',other:'otherUrl'}[slot]||'otherUrl';
+            let tries=0;
+            const poll=()=>{ tries++;
+              this.jsonpGet(this.apiUrl()+'?token='+encodeURIComponent(this.data.settings.apiToken||'')+'&action=lastUpload&id='+encodeURIComponent(id)+'&slot='+encodeURIComponent(slot)+'&callback=?')
+                .then(rr=>{ if(rr&&rr.url){ const cc=this.cand(id); if(cc){ cc[field]=rr.url; cc.updatedAt=Date.now(); this.logHist(cc,'Uploaded '+slot+': '+f.name); this.save('Uploaded — link attached'); } }
+                  else if(tries<6){ setTimeout(poll,3000); } else { this.logHist(c,'Uploaded '+slot+' (link pending): '+f.name); this.save('Uploaded — link will appear shortly'); } })
+                .catch(()=>{ if(tries<6) setTimeout(poll,3000); }); };
+            setTimeout(poll,3000);
+          });
       };
       r.readAsDataURL(f);
     };
@@ -2733,7 +2787,9 @@ class Component extends DCLogic {
   interviewsVM(){
     const valid=this.IV_TABS.map(t=>t[0]);
     const tab=valid.includes(this.state.ivTab)?this.state.ivTab:'toschedule';
-    const list=this.ivList(tab), selSet=new Set(this.state.ivSel||[]);
+    const list=this.tsortApply('interview', this.ivList(tab), {name:c=>(c.name||'').toLowerCase(),mode:c=>this.effMode(c),date:c=>this.ivSortKey(c),time:c=>this.ivSortKey(c),marks:c=>this.ivScore(c),verdict:c=>(c.interview.result||'')}), selSet=new Set(this.state.ivSel||[]);
+    const ivCols=[this.tsortHdr('interview','name','Candidate'),this.tsortHdr('interview','mode','Mode'),this.tsortHdr('interview','date','Date'),this.tsortHdr('interview','time','Time')];
+    const ivCols2=[this.tsortHdr('interview','marks','Marks','right'),this.tsortHdr('interview','verdict','Verdict')];
     const ivRows=list.map(c=>{
       const on=selSet.has(c.id), m=this.ivScore(c);
       return { name:c.name||'(unnamed)', sub:this.trackName(c.track)+' · '+this.yearBand(c)+(c.college?(' · '+c.college):''),
@@ -2763,7 +2819,7 @@ class Component extends DCLogic {
         return { label:t[1], go:()=>this.setState({ivTab:t[0],ivSel:[]}),
           style:'padding:7px 14px;border-radius:7px;font-size:12px;font-weight:600;white-space:nowrap;flex:1 1 auto;text-align:center;display:inline-flex;align-items:center;justify-content:center;gap:6px;'+(on?'color:#fff;background:var(--acG)':'color:var(--t2)'),
           cnt:n?String(n):'', cntStyle:n?('font-size:9px;font-weight:800;padding:1px 6px;border-radius:20px;background:'+(on?'rgba(255,255,255,.2)':'var(--sf2)')):'display:none' }; }),
-      ivRows, ivEmpty:ivRows.length===0, ivEmptyMsg:emptyMsg,
+      ivRows, ivEmpty:ivRows.length===0, ivEmptyMsg:emptyMsg, ivCols, ivCols2,
       ivToggleAll:()=>this.ivToggleAll(), ivSelAllStyle:this.box(allSel), ivSelAllMark:allSel?'✓':'',
       ivSelCount:nSel, ivBulkOn:nSel>0, ivClearSel:()=>this.ivClearSel(),
       ivBulkActions:[{v:'mail',l:'Email the interview call'},{v:'verdict:pass',l:'Mark → Cleared'},
@@ -2783,9 +2839,9 @@ class Component extends DCLogic {
   apList(tab){
     const cc=this.cohCands();
     if(tab==='pending') return this.active(cc).filter(c=>c.stage==='final'&&!(c.appr.mayank||c.appr.bypass));
-    if(tab==='approved') return this.active(cc).filter(c=>c.stage==='final'&&(c.appr.mayank||c.appr.bypass)).concat(cc.filter(c=>c.stage==='joined'));
+    if(tab==='approved') return this.active(cc).filter(c=>(c.stage==='final'||c.stage==='joined')&&(c.appr.mayank||c.appr.bypass));
     if(tab==='rejected') return cc.filter(c=>this.isRejected(c)&&['interview','final'].includes(c.stage));
-    if(tab==='extensions') return this.active(cc).filter(c=>c.stage==='joined'&&c.ext.req);
+    if(tab==='extensions') return this.active(cc).filter(c=>c.stage==='joined'&&c.ext.req&&c.ext.decision!=='declined');
     return [];
   }
   /* ---------- generic table sort (click heading, arrow like LegalDesk) ---------- */
@@ -2834,7 +2890,8 @@ class Component extends DCLogic {
         showConfirm:ready, onConfirm:()=>this.confirmFinal(c.id),
         showBypass:!mOn&&!joined&&!rej, onBypass:()=>this.bypass(c.id) };
     });
-    const apExtRows=isExt?list.map(c=>{
+    const extListSorted=isExt?this.tsortApply('apext',list,{name:c=>(c.name||'').toLowerCase(),mode:c=>this.effMode(c),review:c=>this.reviewScore(c)}):[];
+    const apExtRows=isExt?extListSorted.map(c=>{
       const e=c.ext, mOn=!!e.mayank, bOn=!!e.bharat, approved=e.decision==='approved', declined=e.decision==='declined';
       const rs=this.reviewScore(c);
       let sl,ss; if(approved){sl='Approved';ss=this.pill('var(--okL)','var(--ok)');} else if(declined){sl='Declined';ss=this.pill('var(--dnL)','var(--dn)');} else {sl='Pending';ss=this.pill('var(--wnL)','var(--wn)');}
@@ -2867,6 +2924,7 @@ class Component extends DCLogic {
           cnt:n?String(n):'', cntStyle:n?('font-size:9px;font-weight:800;padding:1px 6px;border-radius:20px;background:'+(on?'rgba(255,255,255,.2)':'var(--sf2)')):'display:none' }; }),
       apRows, apExtRows, apEmpty:list.length===0,
       apCols:[this.tsortHdr('approvals','name','Finalist'),this.tsortHdr('approvals','track','Track'),this.tsortHdr('approvals','mode','Mode'),this.tsortHdr('approvals','score','App','right'),this.tsortHdr('approvals','iv','Intvw','right')],
+      apExtCols:[this.tsortHdr('apext','name','Intern'),this.tsortHdr('apext','mode','Mode'),this.tsortHdr('apext','review','Review','right')],
       apStatusCol:this.tsortHdr('approvals','status','Status'),
       apEmptyMsg:{pending:'No finalists awaiting sign-off.',approved:'No approved or confirmed candidates yet.',rejected:'No rejected finalists.',extensions:'No extension requests. Raise them from the Extensions tab.'}[tab],
       apStats:[stat(finalists.length,'Finalists','var(--tx)'),stat(confirmed.length,'Confirmed','var(--ok)'),
@@ -2892,7 +2950,9 @@ class Component extends DCLogic {
   toggleStipend(id){ const c=this.cand(id); if(!c) return;
     c.stip.grant=!c.stip.grant; this.logHist(c,'Stipend '+(c.stip.grant?'granted':'removed')); this.save(c.stip.grant?'Stipend granted':'Stipend removed'); }
   onboardingVM(){
-    let list=this.active(this.cohCands()).filter(c=>c.stage==='joined');
+    // Onboarding = confirmed finalists of THIS cohort awaiting start (pre-joining paperwork). Once an intern
+    // actually joins they move to Running Cohort only — no overlap. Extensions never appear here.
+    let list=this.active(this.cohCands()).filter(c=>c.stage==='final'&&(c.appr.mayank||c.appr.bypass));
     list=this.tsortApply('onboarding',list,{name:c=>(c.name||'').toLowerCase(),mode:c=>this.effMode(c),nda:c=>({pending:0,received:1,signed:2}[c.nda.status]||0),stipend:c=>(c.stip.grant?1:0)});
     const btn=(on,tone)=>'padding:6px 12px;border-radius:9px;font-size:11.5px;font-weight:700;white-space:nowrap;border:1.5px solid '+(on?tone:'var(--bd)')+';background:'+(on?'color-mix(in srgb,'+tone+' 16%,transparent)':'transparent')+';color:'+(on?tone:'var(--t2)');
     const ndaMap={pending:['NDA awaited','var(--wn)'],received:['E-copy in','var(--ac2)'],signed:['Signed & filed','var(--ok)']};
@@ -3268,18 +3328,28 @@ class Component extends DCLogic {
     this.save('Reminded '+pend.length+' counsel(s)'); }
   stopReviewReminders(id){ const c=this.cand(id); if(!c||!c.reviewReq) return; c.reviewReq.active=false; this.logHist(c,'Review reminders stopped'); this.save('Reminders stopped'); }
   // extension lifecycle
+  nextMonthLabel(coh){ if(!coh) return ''; let mi=this.MONTHS.indexOf(coh.month), y=coh.year; mi++; if(mi>11){mi=0;y++;} return this.MONTHS[mi]+' '+y; }
   raiseExtension(id){ const c=this.cand(id); if(!c) return;
-    c.ext.req=true; c.ext.requestedAt=Date.now(); c.ext.decision=''; 
-    this.logHist(c,'Extension requested by '+(this.actingAs||'—')+' → sent to Approvals');
-    this.save('Extension request raised — now in Approvals'); }
+    const coh=this.data.cohorts.find(x=>x.id===c.cohortId);
+    if(!c.ext.targetMonth) c.ext.targetMonth=this.nextMonthLabel(coh);   // default: the month after their current cohort
+    c.ext.req=true; c.ext.requestedAt=Date.now(); c.ext.decision='';
+    this.logHist(c,'Extension requested by '+(this.actingAs||'—')+' for '+c.ext.targetMonth+' → sent to Approvals');
+    this.save('Extension request raised for '+c.ext.targetMonth+' — now in Approvals'); }
+  setExtTarget(id,label){ const c=this.cand(id); if(!c) return; c.ext.targetMonth=label; c.updatedAt=Date.now(); this.save('Extension target set to '+label); }
   withdrawExtension(id){ const c=this.cand(id); if(!c) return; c.ext.req=false; c.ext.decision=''; c.ext.mayank=''; c.ext.bharat=''; this.logHist(c,'Extension request withdrawn'); this.save('Withdrawn'); }
+  ensureCohort(label){ const parts=String(label||'').split(' '); const month=parts[0], year=parseInt(parts[1])||new Date().getFullYear();
+    let coh=this.data.cohorts.find(x=>x.month===month&&x.year===year);
+    if(!coh){ coh=this.mkCohort(month,year,'active'); this.data.cohorts.push(coh); } return coh; }
+  extendIntoTarget(c){ if(!c.ext.targetMonth) return; const coh=this.ensureCohort(c.ext.targetMonth);
+    if(c.ext.addedTo===coh.id) return; c.ext.addedTo=coh.id;
+    this.logHist(c,'Extension approved — carried into '+c.ext.targetMonth); }
   setExtAppr(id,who){ const c=this.cand(id); if(!c) return;
     c.ext[who]=c.ext[who]==='ok'?'':'ok';
-    if(c.ext.mayank==='ok'&&c.ext.decision!=='approved'){ c.ext.decision='approved'; this.logHist(c,'Extension APPROVED'); this.sendCandidateMail(id,'ext_approved'); }
+    if(c.ext.mayank==='ok'&&c.ext.decision!=='approved'){ c.ext.decision='approved'; this.extendIntoTarget(c); this.logHist(c,'Extension APPROVED'); this.sendCandidateMail(id,'ext_approved'); }
     else this.logHist(c,who+' extension sign-off '+(c.ext[who]?'given':'cleared'));
     this.save(null); }
   bypassExtension(id){ this.ask('Bypass extension approval','Record a bypass of Mayank Sir\u2019s sign-off for this extension. A reason is required.',(reason)=>{
-    const c=this.cand(id); if(!c) return; c.ext.mayank='bypassed'; c.ext.decision='approved'; c.ext.bypass={by:this.actingAs||'—',reason,ts:Date.now()};
+    const c=this.cand(id); if(!c) return; c.ext.mayank='bypassed'; c.ext.decision='approved'; c.ext.bypass={by:this.actingAs||'—',reason,ts:Date.now()}; this.extendIntoTarget(c);
     this.logHist(c,'Extension bypassed: '+reason); this.save('Extension bypassed'); this.sendCandidateMail(id,'ext_approved'); },{needsReason:true,okLabel:'Record bypass'}); }
   declineExtension(id){ const c=this.cand(id); if(!c) return; c.ext.decision='declined'; c.ext.mayank=''; this.logHist(c,'Extension declined'); this.save('Extension declined'); }
   setExtStipend(id,v){ const c=this.cand(id); if(!c) return; c.ext.stipend=v; if(v==='yes'&&!c.ext.stipendAmount) c.ext.stipendAmount=11000; this.logHist(c,'Extension stipend: '+v); this.save(null); }
