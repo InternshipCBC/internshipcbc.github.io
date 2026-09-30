@@ -1,15 +1,32 @@
-// Cohort service worker — network-first for the app, cache as offline fallback
-const CACHE='cohort-v2';
-const ASSETS=['./index.html','./cohort-data.js','./support.js','./CohortReview.dc.html','./cohort.webmanifest','./logo.png','./cohort-icon-192.png','./cohort-icon-512.png','./cohort-icon-180.png'];
-self.addEventListener('install',e=>{ self.skipWaiting(); e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS).catch(()=>{}))); });
-self.addEventListener('activate',e=>{ e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==CACHE).map(k=>caches.delete(k))))); self.clients.claim(); });
-self.addEventListener('fetch',e=>{
-  const u=e.request.url;
-  if(u.includes('script.google.com')||u.includes('googleapis')) return; // never touch the sync endpoint
-  if(e.request.method!=='GET') return;
-  // Network-first: always try the live file, fall back to cache only when offline.
-  e.respondWith(fetch(e.request).then(res=>{
-    if(res&&res.ok&&res.type==='basic'){ const cp=res.clone(); caches.open(CACHE).then(c=>c.put(e.request,cp)); }
+// Cohort service worker (v23).
+// Own files: network first, cached copy when offline. Versioned CDN libraries (React, fonts, icons): cached after
+// first use so the app also opens offline. The Google endpoint is never touched.
+const CACHE = 'cohort-v23';
+const OWN = ['./Cohort.dc.html','./index.html','./CohortReview.dc.html','./support.js','./cohort-core.js','./cohort-data.js','./cohort.webmanifest',
+  './logo.png','./cohort-icon-192.png','./cohort-icon-512.png','./cohort-icon-180.png','./gas/Code.gs','./gas/WebApp.gs','./gas/AI.gs'];
+const CDN = /^https:\/\/(unpkg\.com|cdn\.jsdelivr\.net|cdnjs\.cloudflare\.com|fonts\.googleapis\.com|fonts\.gstatic\.com)\//;
+
+self.addEventListener('install', e => {
+  self.skipWaiting();
+  e.waitUntil(caches.open(CACHE).then(c => Promise.all(OWN.map(u => c.add(u).catch(() => null)))));
+});
+self.addEventListener('activate', e => {
+  e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim()));
+});
+self.addEventListener('fetch', e => {
+  const req = e.request, url = req.url;
+  if(req.method !== 'GET') return;
+  if(/script\.google(usercontent)?\.com|googleapis\.com\/(?!css)|groq\.com/.test(url) && !/fonts\.googleapis\.com/.test(url)) return;
+  if(CDN.test(url)){
+    e.respondWith(caches.match(req).then(hit => hit || fetch(req).then(res => {
+      if(res && (res.ok || res.type === 'opaque')){ const cp = res.clone(); caches.open(CACHE).then(c => c.put(req, cp)); }
+      return res;
+    })));
+    return;
+  }
+  if(new URL(url).origin !== self.location.origin) return;
+  e.respondWith(fetch(req).then(res => {
+    if(res && res.ok){ const cp = res.clone(); caches.open(CACHE).then(c => c.put(req, cp)); }
     return res;
-  }).catch(()=>caches.match(e.request).then(r=>r||caches.match('./index.html'))));
+  }).catch(() => caches.match(req, { ignoreSearch: true }).then(r => r || (req.mode === 'navigate' ? caches.match('./Cohort.dc.html') : undefined))));
 });

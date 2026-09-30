@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Intern review — Chambers of Bharat Chugh</title>
+<meta name="referrer" content="no-referrer">
 <script src="./support.js"></script>
 </head>
 <body>
@@ -42,7 +44,7 @@ label{display:block;font-size:10px;font-weight:700;text-transform:uppercase;lett
     </div>
 
     <sc-if value="{{ invalid }}" hint-placeholder-val="{{ false }}">
-      <div style="background:var(--sf);border:1.5px solid var(--dn);border-radius:var(--r);padding:24px;margin-top:20px;color:var(--dn);font-size:14px"><b>This review link is invalid or has expired.</b><br><span style="color:var(--t2)">Please ask the internship team to send you a fresh link.</span></div>
+      <div style="background:var(--sf);border:1.5px solid var(--dn);border-radius:var(--r);padding:24px;margin-top:20px;color:var(--dn);font-size:14px"><b>{{ invalidMsg }}</b><br><span style="color:var(--t2)">Please ask the internship team to send you a fresh link.</span></div>
     </sc-if>
 
     <sc-if value="{{ done }}" hint-placeholder-val="{{ false }}">
@@ -55,16 +57,11 @@ label{display:block;font-size:10px;font-weight:700;text-transform:uppercase;lett
 
     <sc-if value="{{ ready }}" hint-placeholder-val="{{ true }}">
       <div style="margin-top:20px">
-        <div style="background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);box-shadow:var(--sh);padding:18px 20px;margin-bottom:16px">
-          <label>Who is reviewing?</label>
-          <select value="{{ counsel }}" onChange="{{ onCounsel }}">
-            <option value="">Select your name…</option>
-            <sc-for list="{{ counsels }}" as="c" hint-placeholder-count="3"><option value="{{ c }}">{{ c }}</option></sc-for>
-          </select>
-          <div style="font-size:11px;color:var(--mu);margin-top:8px">Only the internship team can add or remove names on this list. If your name is missing, tell them.</div>
+        <div style="background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);box-shadow:var(--sh);padding:16px 20px;margin-bottom:16px">
+          <div style="font-size:13px">Reviewing as <b>{{ counsel }}</b> · {{ interns.length }} intern(s)</div>
+          <div style="font-size:11.5px;color:var(--mu);margin-top:6px">This link is personal to you — please don’t forward it. {{ prefillNote }}</div>
         </div>
-
-        <sc-if value="{{ counselChosen }}" hint-placeholder-val="{{ false }}">
+        <sc-if value="{{ counselChosen }}">
           <div>
             <sc-for list="{{ interns }}" as="it" hint-placeholder-count="3">
               <div style="background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);box-shadow:var(--sh);margin-bottom:14px;overflow:hidden">
@@ -111,7 +108,8 @@ label{display:block;font-size:10px;font-weight:700;text-transform:uppercase;lett
 
             <div style="position:sticky;bottom:0;padding:14px 0;background:linear-gradient(to top,var(--bg) 60%,transparent)">
               <button onClick="{{ submit }}" disabled="{{ submitDisabled }}" style="{{ submitStyle }}"><i class="ph ph-paper-plane-tilt"></i> {{ submitLabel }}</button>
-              <div style="font-size:11px;color:var(--mu);text-align:center;margin-top:8px">{{ submitHint }}</div>
+              <div style="font-size:11.5px;color:var(--mu);text-align:center;margin-top:8px">{{ submitHint }}</div>
+              <sc-if value="{{ errorMsg }}"><div style="margin-top:10px;background:var(--dnL);border:1.5px solid var(--dn);color:var(--dn);border-radius:10px;padding:10px 14px;font-size:12.5px">{{ errorMsg }}</div></sc-if>
             </div>
           </div>
         </sc-if>
@@ -123,67 +121,66 @@ label{display:block;font-size:10px;font-weight:700;text-transform:uppercase;lett
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:&quot;100%&quot;,&quot;height&quot;:&quot;100%&quot;}}">
 class Component extends DCLogic {
-  state = { payload:null, invalid:false, counsel:'', answers:{}, done:false, submitting:false, submittedCount:0, params:[], recOpts:[] };
+  state = { payload:null, invalid:false, invalidMsg:'', counsel:'', answers:{}, done:false, submitting:false, submittedCount:0, params:[], recOpts:[], error:'', prefilled:0 };
   componentDidMount(){
+    if(this._m) return; this._m=true;
+    let p=null;
     try{
       const m=(location.hash||'').match(/r=([^&]+)/);
       if(!m) throw new Error('no payload');
-      const p=JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(m[1])))));
-      if(!p||!p.interns||!p.interns.length) throw new Error('empty');
-      const answers={}; p.interns.forEach(it=>{ answers[it.id]={worked:null,ratings:{},recommend:'',stipend:'',comments:''}; });
-      this.setState({payload:p, answers});
-    }catch(e){ this.setState({invalid:true}); }
-    import('./cohort-data.js').then(m=>{ this.setState({params:m.REVIEW_PARAMS||[], recOpts:(m.RECOMMEND_OPTIONS||[]).filter(o=>o.v!=='na')}); }).catch(()=>{});
-    try{ const c=localStorage.getItem('cohort_review_counsel'); if(c) this.setState({counsel:c}); }catch(e){}
+      p=JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(m[1])))));
+    }catch(e){ this.setState({invalid:true,invalidMsg:'This review link is incomplete. Please open it directly from the email, or ask the team for a fresh one.'}); return; }
+    if(!p||!p.k||!p.e||!Array.isArray(p.interns)||!p.interns.length){ this.setState({invalid:true,invalidMsg:'This review link is from an older version of the system and no longer works. Please ask the team for a fresh link.'}); return; }
+    const answers={}; p.interns.forEach(it=>{ answers[it.id]={worked:null,ratings:{},recommend:'',stipend:'',comments:''}; });
+    this.setState({payload:p,answers,counsel:p.who||'Counsel'});
+    import('./cohort-data.js').then(m=>this.setState({params:m.REVIEW_PARAMS||[],recOpts:(m.RECOMMEND_OPTIONS||[]).filter(o=>o.v!=='na')})).catch(()=>this.setState({error:'Could not load the form. Check the internet connection and reload.'}));
+    this.post({action:'myReviews',key:p.k,ids:p.interns.map(i=>i.id)}).then(r=>{ const prev=(r&&r.reviews)||{}; const a=Object.assign({},this.state.answers); let n=0;
+      Object.keys(prev).forEach(id=>{ if(a[id]){ a[id]=Object.assign({},a[id],prev[id],{ratings:Object.assign({},prev[id].ratings||{})}); n++; } });
+      if(n) this.setState({answers:a,prefilled:n}); }).catch(()=>{});
   }
-  onCounsel(e){ const v=e.target.value; try{ localStorage.setItem('cohort_review_counsel',v); }catch(x){} this.setState({counsel:v}); }
-  setWorked(id,v){ const a=Object.assign({},this.state.answers); a[id]=Object.assign({},a[id],{worked:v}); this.setState({answers:a}); }
-  setRating(id,k,v){ const a=Object.assign({},this.state.answers); const r=Object.assign({},a[id].ratings); r[k]=(r[k]===v?null:v); a[id]=Object.assign({},a[id],{ratings:r}); this.setState({answers:a}); }
-  setRec(id,v){ const a=Object.assign({},this.state.answers); a[id]=Object.assign({},a[id],{recommend:a[id].recommend===v?'':v}); this.setState({answers:a}); }
-  setStip(id,v){ const a=Object.assign({},this.state.answers); a[id]=Object.assign({},a[id],{stipend:a[id].stipend===v?'':v}); this.setState({answers:a}); }
-  setComments(id,v){ const a=Object.assign({},this.state.answers); a[id]=Object.assign({},a[id],{comments:v}); this.setState({answers:a}); }
-  filledCount(){ let n=0; const a=this.state.answers; Object.keys(a).forEach(id=>{ if(a[id].worked==='no'||(a[id].worked==='yes'&&(Object.values(a[id].ratings).some(x=>x)||a[id].recommend))) n++; }); return n; }
+  async post(body){
+    const r=await fetch(this.state.payload?this.state.payload.e:'',{method:'POST',body:JSON.stringify(body),redirect:'follow',credentials:'omit',cache:'no-store'});
+    const t=await r.text(); try{ return JSON.parse(t); }catch(e){ throw new Error('The Chambers’ server did not answer properly (HTTP '+r.status+').'); }
+  }
+  upd(id,patch){ const a=Object.assign({},this.state.answers); a[id]=Object.assign({},a[id],patch); this.setState({answers:a,error:''}); }
+  setRating(id,k,v){ const r=Object.assign({},this.state.answers[id].ratings); r[k]=(r[k]===v?null:v); this.upd(id,{ratings:r}); }
+  answered(a){ return a.worked==='no'||(a.worked==='yes'&&(Object.values(a.ratings||{}).some(x=>x)||a.recommend)); }
+  filledCount(){ const a=this.state.answers; return Object.keys(a).filter(id=>this.answered(a[id])).length; }
   async submit(){
-    const p=this.state.payload; if(!p||!this.state.counsel) return;
-    this.setState({submitting:true});
-    const a=this.state.answers; let n=0;
+    const p=this.state.payload; if(!p||this.state.submitting) return;
+    this.setState({submitting:true,error:''});
+    const a=this.state.answers; let n=0; const fails=[];
     for(const it of p.interns){
-      const ans=a[it.id]; if(!ans||ans.worked==null) continue;
-      const review={ by:this.state.counsel, worked:ans.worked, ratings:ans.worked==='yes'?ans.ratings:{}, recommend:ans.worked==='no'?'na':ans.recommend, stipend:ans.stipend, comments:(ans.comments||'').trim() };
-      try{ await fetch(p.e,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({token:p.t,action:'saveReview',id:it.id,review})}); }catch(e){}
-      n++;
+      const ans=a[it.id]; if(!ans||!this.answered(ans)) continue;
+      try{ const r=await this.post({action:'saveReview',key:p.k,id:it.id,review:{worked:ans.worked,ratings:ans.worked==='yes'?ans.ratings:{},recommend:ans.recommend,stipend:ans.stipend,comments:(ans.comments||'').trim()}});
+        if(r&&r.ok) n++; else fails.push(it.name+': '+((r&&r.error)||'not saved')); }
+      catch(e){ fails.push(it.name+': '+(e.message||'network error')); }
     }
-    this.setState({submitting:false,done:true,submittedCount:n});
+    if(fails.length) this.setState({submitting:false,submittedCount:n,error:(n?(n+' saved. '):'')+'Not saved — '+fails.join('; ')+'. Please try again.'});
+    else this.setState({submitting:false,done:true,submittedCount:n});
   }
   renderVals(){
     const p=this.state.payload, a=this.state.answers;
-    const dot=(on,tone)=>'width:16px;height:16px;border-radius:50%;cursor:pointer;flex-shrink:0;border:1.5px solid '+(on?tone:'var(--bd)')+';background:'+(on?tone:'transparent');
+    const dot=(on,tone)=>'width:20px;height:20px;border-radius:50%;cursor:pointer;flex-shrink:0;border:1.5px solid '+(on?tone:'var(--bd)')+';background:'+(on?tone:'transparent');
     const optBtn=(on,tone)=>'display:flex;align-items:center;gap:9px;text-align:left;padding:10px 13px;border-radius:10px;font-size:13px;font-weight:600;border:1.5px solid '+(on?tone:'var(--bd)')+';background:'+(on?'color-mix(in srgb,'+tone+' 15%,transparent)':'var(--sf2)')+';color:'+(on?tone:'var(--tx)')+';width:100%';
     const segBtn=(on,tone)=>'padding:9px 18px;border-radius:10px;font-size:13px;font-weight:700;border:1.5px solid '+(on?tone:'var(--bd)')+';background:'+(on?'color-mix(in srgb,'+tone+' 15%,transparent)':'var(--sf2)')+';color:'+(on?tone:'var(--t2)');
-    const interns=(p&&p.interns||[]).map(it=>{
-      const ans=a[it.id]||{worked:null,ratings:{},recommend:'',stipend:'',comments:''};
-      const first=(it.name||'').split(' ')[0]||'them';
-      return { name:it.name, sub:it.sub||[it.band,it.college].filter(Boolean).join(' · '), first,
-        onWorkedYes:()=>this.setWorked(it.id,'yes'), onWorkedNo:()=>this.setWorked(it.id,'no'),
-        yesStyle:segBtn(ans.worked==='yes','var(--ok)'), noStyle:segBtn(ans.worked==='no','var(--mu)'),
-        expanded:ans.worked==='yes',
-        params:(this.state.params||[]).map(pm=>({ label:pm.label, hint:pm.hint,
-          dots:[1,2,3,4,5].map(v=>({ onClick:()=>this.setRating(it.id,pm.k,v), title:v+' / 5', style:dot((ans.ratings[pm.k]||0)>=v,'var(--ac)') })) })),
-        recOpts:(this.state.recOpts||[]).map(o=>({ label:o.label, onClick:()=>this.setRec(it.id,o.v),
-          style:optBtn(ans.recommend===o.v,o.tone), dot:'width:9px;height:9px;border-radius:50%;flex-shrink:0;background:'+o.tone })),
-        stipOpts:[['yes','Yes','var(--ok)'],['no','No','var(--dn)']].map(s=>({ label:s[1], onClick:()=>this.setStip(it.id,s[0]), style:segBtn(ans.stipend===s[0],s[2]) })),
-        comments:ans.comments, onComments:(e)=>this.setComments(it.id,e.target.value) };
-    });
-    const filled=this.filledCount();
-    return {
-      cohortLabel:(p&&p.cohort)||'', invalid:this.state.invalid, done:this.state.done, ready:!this.state.invalid&&!this.state.done,
-      counsel:this.state.counsel, onCounsel:(e)=>this.onCounsel(e), counsels:(p&&p.c)||[],
-      counselChosen:!!this.state.counsel, interns, submittedCount:this.state.submittedCount,
-      submit:()=>this.submit(), submitDisabled:this.state.submitting||!this.state.counsel||filled===0,
-      submitLabel:this.state.submitting?'Sending…':('Submit review'+(filled?(' ('+filled+')'):'')),
-      submitStyle:'width:100%;padding:14px;border-radius:11px;font-size:14px;font-weight:800;background:var(--acG);color:#fff;box-shadow:0 4px 14px rgba(45,212,191,.3)'+((this.state.submitting||!this.state.counsel||filled===0)?';opacity:.5':''),
-      submitHint:filled?(filled+' intern(s) answered — you can submit now or answer more first.'):'Answer at least one intern to submit. Marking "No" on someone counts as answered.'
-    };
+    const interns=(p&&p.interns||[]).map(it=>{ const ans=a[it.id]||{worked:null,ratings:{},recommend:'',stipend:'',comments:''}, first=(it.name||'').split(' ')[0]||'them';
+      return { name:it.name, sub:it.sub||'', first,
+        onWorkedYes:()=>this.upd(it.id,{worked:'yes'}), onWorkedNo:()=>this.upd(it.id,{worked:'no'}),
+        yesStyle:segBtn(ans.worked==='yes','var(--ok)'), noStyle:segBtn(ans.worked==='no','var(--mu)'), expanded:ans.worked==='yes',
+        params:(this.state.params||[]).map(pm=>({label:pm.label,hint:pm.hint,dots:[1,2,3,4,5].map(v=>({onClick:()=>this.setRating(it.id,pm.k,v),title:v+' of 5',style:dot((ans.ratings[pm.k]||0)>=v,'var(--ac)')}))})),
+        recOpts:(this.state.recOpts||[]).map(o=>({label:o.label,onClick:()=>this.upd(it.id,{recommend:ans.recommend===o.v?'':o.v}),style:optBtn(ans.recommend===o.v,o.tone),dot:'width:9px;height:9px;border-radius:50%;flex-shrink:0;background:'+o.tone})),
+        stipOpts:[['yes','Yes','var(--ok)'],['no','No','var(--dn)']].map(s=>({label:s[1],onClick:()=>this.upd(it.id,{stipend:ans.stipend===s[0]?'':s[0]}),style:segBtn(ans.stipend===s[0],s[2])})),
+        comments:ans.comments, onComments:(e)=>this.upd(it.id,{comments:e.target.value}) }; });
+    const filled=this.filledCount(), busy=this.state.submitting;
+    return { cohortLabel:(p&&(p.round||p.cohort))||'', invalid:this.state.invalid, invalidMsg:this.state.invalidMsg, done:this.state.done, ready:!this.state.invalid&&!this.state.done&&!!p,
+      counsel:this.state.counsel, counselChosen:!!p, interns, submittedCount:this.state.submittedCount,
+      prefillNote:this.state.prefilled?('Your earlier answers for '+this.state.prefilled+' intern(s) are filled in — change anything and submit again.'):'You can come back to this link and change your answers until the round closes.',
+      submit:()=>this.submit(), submitDisabled:busy||filled===0,
+      submitLabel:busy?'Saving…':('Submit review'+(filled?(' ('+filled+')'):'')),
+      submitStyle:'width:100%;padding:14px;border-radius:11px;font-size:14px;font-weight:800;background:var(--acG);color:#fff;box-shadow:0 4px 14px rgba(45,212,191,.3)'+((busy||!filled)?';opacity:.5':''),
+      submitHint:filled?(filled+' intern(s) answered — submit now or answer more first.'):'Answer at least one intern. Choosing "No" for someone counts as an answer.',
+      errorMsg:this.state.error };
   }
 }
 </script>

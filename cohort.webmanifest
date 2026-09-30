@@ -1,25 +1,17 @@
 {
+  "id": "./Cohort.dc.html",
   "name": "Cohort — Chambers of Bharat Chugh",
   "short_name": "Cohort",
   "description": "Intern intake & associate hiring for the Chambers of Bharat Chugh",
-  "start_url": "./index.html",
+  "start_url": "./Cohort.dc.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
   "background_color": "#111417",
   "theme_color": "#12b3a6",
   "icons": [
-    {
-      "src": "cohort-icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "cohort-icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
-    }
+    { "src": "cohort-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "cohort-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "cohort-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }
