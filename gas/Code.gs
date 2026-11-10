@@ -38,6 +38,7 @@ const SWEEP_REJECTED_DAYS = 60;    // Drive files of rejected candidates are tra
 /* ====================================================================== */
 
 const COHORT_SERVER_VERSION = "v24";
+// The columns of the v23 "Applications" tab, kept only so the one-time import can read an existing one.
 const SHEET_HEADERS = ["Received","Track","Month","Year","Name","Email","CV link","Cover link","NDA link","Email PDF","Other files",
   "Status","Key","Subject","Body","Files","CandidateId","Updated","AI","MessageId","ThreadId"];
 const OUR_TRIGGERS = ["processInbox","aiVetPending","nightly","morning","dailyReminders","autoSweepRejected"];
@@ -150,12 +151,6 @@ function readRows_(sh){
   return { head, rows: vals.map((r, i) => { const o = { _row: i + 2 }; head.forEach((h, j) => { if(h) o[h] = r[j]; }); return o; }) };
 }
 function sheetHead_(sh){ return sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(String); }
-function writeRowObj_(sh, head, rowIdx, obj){
-  const cur = rowIdx ? sh.getRange(rowIdx, 1, 1, head.length).getValues()[0] : head.map(() => "");
-  const vals = head.map((h, j) => (h in obj) ? obj[h] : cur[j]);
-  if(rowIdx) sh.getRange(rowIdx, 1, 1, head.length).setValues([vals]);
-  else sh.appendRow(vals);
-}
 function cell_(s, n){ s = String(s == null ? "" : s); return s.length > n ? s.slice(0, n) : s; }
 function gmailLink_(threadId){ return threadId ? ("https://mail.google.com/mail/?authuser=" + encodeURIComponent(INBOX) + "#all/" + threadId) : ""; }
 function automation_(st){ return Object.assign(defaultAutomation(), getSetting_(st, "automation", {}) || {}); }
@@ -179,7 +174,7 @@ function processInbox(){
   const byKey = {};
   Object.keys(snap.candidates).forEach(id => { const c = snap.candidates[id]; if(!c.key) return;
     byKey[String(c.key)] = { id: c.id, key: c.key, intakeTs: c.intakeTs || 0, cvUrl: c.cvUrl, clUrl: c.clUrl,
-      ndaUrl: c.ndaUrl, emailPdfUrl: c.emailPdfUrl, otherUrl: c.otherUrl, appFiles: (snap.applications[id] || {}).files || "" }; });
+      ndaUrl: c.ndaUrl, emailPdfUrl: c.emailPdfUrl, otherUrl: c.otherUrl, appFiles: c.appFiles || "" }; });
   const qBase = "newer_than:" + INTAKE_WINDOW_DAYS + "d " + notHandledQuery_();
   const q = "in:inbox has:attachment " + qBase;
   // Soonest months first: search month by month (current month, then the next six), then everything else.
@@ -271,6 +266,9 @@ function processInbox(){
       mailLogs.forEach(m => { const c = st.candidates[m.cid]; if(c){ c.mails.push(m.mail); bump_(st, c); } });
       applyCorrespondence_(st, corr);
     });
+    const bodies = {};
+    filings.forEach(f => { bodies[f.cid] = { body: String(f.body || "").slice(0, 6000), at: f.receivedAt || Date.now() }; });
+    putApps_(bodies);
   }catch(e){ h.ok = false; h.err = "Could not update shared data: " + e.message; }
   // The Sheet is a read-only mirror now, written after the fact and never read back.
   try{ if(filings.length || corr.length) mirrorToSheet_(); }catch(e){ h.mirrorErr = String(e && e.message || e).slice(0, 160); }
@@ -370,7 +368,7 @@ function processReplies_(snap, folder, counselEmails, corr, h, t0){
   if(!Object.keys(byEmail).length) return;
   const seen = {};
   Object.keys(snap.candidates).forEach(id => { const c = snap.candidates[id]; (c.inbox || []).forEach(x => { if(x.msgId) seen[x.msgId] = 1; }); if(c.appMsgId) seen[c.appMsgId] = 1; });
-  Object.keys(snap.applications || {}).forEach(id => { const a = snap.applications[id]; if(a && a.msgId) seen[String(a.msgId)] = 1; });
+  Object.keys(snap.candidates).forEach(id => { const c = snap.candidates[id]; if(c.appMsgId) seen[String(c.appMsgId)] = 1; });
   const threads = GmailApp.search('in:inbox newer_than:4d -label:"' + LBL.notApp + '" -label:"Status/Ignored"', 0, 60);
   threads.forEach(th => {
     if(Date.now() - t0 > 120000) return;
@@ -685,10 +683,10 @@ function applyFiling_(st, f){
   applyChange(c, "gmailThread", f.threadId || "", now);
   applyChange(c, "gmailUrl", gmailLink_(f.threadId), now);
   if(!!c.late !== !!f.late) applyChange(c, "late", !!f.late, now);
-  // The subject, the body and the attachment names stay on the server: they are what the AI reads, and sending
-  // several thousand characters per candidate to every device would make the sync many times heavier.
-  st.applications[f.cid] = { subject: f.subject || "", body: f.body || "", files: f.fileNames || "",
-    msgId: f.msgId || "", threadId: f.threadId || "", receivedAt: f.receivedAt || now };
+  // The subject and the attachment names are short and useful, so they sit on the record. The body is the AI's
+  // raw material and nothing else reads it, so it goes in the side file — see putApps_.
+  applyChange(c, "appSubject", String(f.subject || "").slice(0, 300), now);
+  applyChange(c, "appFiles", String(f.fileNames || "").slice(0, 400), now);
   markCvFlag_(c, now);
   bump_(st, c);
   return c;
@@ -740,6 +738,7 @@ function markCvFlag_(c, now){
 }
 function importLegacySheet_(st, sh){
   const data = readRows_(sh);
+  const legacyBodies = {};
   const idCol = data.head.indexOf("CandidateId") + 1;
   let created = 0, linked = 0, updated = 0;
   const byEmailCohort = {};
@@ -769,20 +768,23 @@ function importLegacySheet_(st, sh){
         appMsgId: String(r.MessageId || ""), gmailThread: thread, gmailUrl: gmailLink_(thread),
         hist: [{ ts: now, by: "Intake", txt: "Application filed from Gmail (" + String(r.Subject || "").slice(0, 80) + ")" }] });
       Object.keys(docs).forEach(k => { c[k] = String(docs[k] || ""); });
+      applyChange(c, "appSubject", String(r.Subject || "").slice(0, 300), now);
+      applyChange(c, "appFiles", String(r.Files || "").slice(0, 400), now);
       st.candidates[cid] = c; markCvFlag_(c, now); bump_(st, c); created++;
-      st.applications[cid] = { subject: String(r.Subject || ""), body: String(r.Body || ""), files: String(r.Files || ""),
-        msgId: String(r.MessageId || ""), threadId: thread, receivedAt: rowTs || now };
+      legacyBodies[cid] = { body: String(r.Body || "").slice(0, 6000), at: rowTs || now };
     } else if(rowTs && rowTs > (c.intakeTs || 0)){
       Object.keys(docs).forEach(k => { if(docs[k] && docs[k] !== c[k]) applyChange(c, k, String(docs[k]), now); });
       applyChange(c, "intakeTs", rowTs, now);
       markCvFlag_(c, now);
       if(thread){ applyChange(c, "gmailThread", thread, now); applyChange(c, "gmailUrl", gmailLink_(thread), now); applyChange(c, "appMsgId", String(r.MessageId || ""), now); }
       if(c.intakeTs && (c.hist || []).length) { applyChange(c, "aiRequest", now, now); c.hist.push({ ts: now, by: "Intake", txt: "Newer application email received — documents updated" }); }
+      applyChange(c, "appSubject", String(r.Subject || "").slice(0, 300), now);
+      applyChange(c, "appFiles", String(r.Files || "").slice(0, 400), now);
       bump_(st, c); updated++;
-      st.applications[c.id] = { subject: String(r.Subject || ""), body: String(r.Body || ""), files: String(r.Files || ""),
-        msgId: String(r.MessageId || ""), threadId: thread, receivedAt: rowTs || now };
+      legacyBodies[c.id] = { body: String(r.Body || "").slice(0, 6000), at: rowTs || now };
     }
   });
+  putApps_(legacyBodies);
   return { created, linked, updated, total: Object.keys(st.candidates).length };
 }
 
@@ -792,6 +794,7 @@ function nightly(){
   try{ h.swept = autoSweepRejected(); }catch(e){ h.ok = false; h.err = e.message; }
   try{ h.mirrored = mirrorToSheet_(); }catch(e){ h.snapErr = e.message; }
   try{ h.ackPruned = pruneAcked_(); }catch(e){}
+  try{ h.bodiesPruned = pruneApplications_(); }catch(e){}
   h.ms = Date.now() - t0; budgetAdd_(h.ms);
   health_("nightly", h);
 }
@@ -817,6 +820,15 @@ function autoSweepRejected(){
   });
   return n;
 }
+/** Drop the application text of anyone deleted, or whose month is over — the AI never reads a past month. */
+function pruneApplications_(){
+  const st = loadStore_(), a = loadApps_();
+  let n = 0;
+  Object.keys(a).forEach(id => { const c = st.candidates[id]; if(!c || !isLiveCandidate_(st, c)){ delete a[id]; n++; } });
+  if(n) saveApps_(a);
+  return n;
+}
+
 /** Keep the record of who has been written to from growing without limit. */
 function pruneAcked_(){
   let n = 0;

@@ -24,7 +24,7 @@ const arjun = Object.values(st.candidates).find(c => c.email === 'arjun@example.
 ok(!!arjun, 'the application was filed');
 
 // the AI's reading material comes from the store
-const pack = E.ctx.applicationPack_(arjun, st.applications[arjun.id], false);
+const pack = E.ctx.applicationPack_(arjun, E.ctx.loadApps_()[arjun.id], false);
 ok(pack.hasMaterial, 'the AI has something to read');
 ok(/I wish to apply/.test(pack.text), 'the AI sees the email body');
 ok(/Career - Internship for January 2027/.test(pack.text), 'the AI sees the subject');

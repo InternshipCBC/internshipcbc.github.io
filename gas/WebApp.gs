@@ -74,10 +74,8 @@ function storeFile_(){
   try{ f.setSharing(DriveApp.Access.PRIVATE, DriveApp.Permission.NONE); }catch(e){}
   return f;
 }
-// "applications" and "acked" are server-only: they never go out over pull and never come back over push.
-// The application's subject and body are the AI's raw material and would otherwise put several megabytes of
-// text on every device; "acked" is the record of who has already been written to.
-function emptyStore_(){ return { schema: 4, rev: 0, cohorts: {}, candidates: {}, reports: {}, settings: {}, deleted: {}, deletedKeys: {}, applications: {}, acked: {} }; }
+// "acked" is server-only: the record of who has already been written to. It never goes out over pull.
+function emptyStore_(){ return { schema: 4, rev: 0, cohorts: {}, candidates: {}, reports: {}, settings: {}, deleted: {}, deletedKeys: {}, acked: {} }; }
 function loadStore_(){
   const file = storeFile_();
   let raw = file.getBlob().getDataAsString() || "";
@@ -85,7 +83,7 @@ function loadStore_(){
   if(raw.trim()){ try{ st = JSON.parse(raw); }catch(e){ throw new Error("The shared data file is damaged (cohort_state.json). Restore an older version from Drive (right-click → Manage versions)."); } }
   if(!st) st = emptyStore_();
   if(st.schema !== 4) st = migrateStore_(st, raw, file);
-  ["cohorts","candidates","reports","settings","deleted","deletedKeys","applications","acked"].forEach(k => { if(!st[k] || typeof st[k] !== "object") st[k] = {}; });
+  ["cohorts","candidates","reports","settings","deleted","deletedKeys","acked"].forEach(k => { if(!st[k] || typeof st[k] !== "object") st[k] = {}; });
   if(!st.rev) st.rev = 0;
   return st;
 }
@@ -107,6 +105,31 @@ function withStore_(fn){
   } finally { lock.releaseLock(); }
 }
 function fastRev_(){ return parseInt(PropertiesService.getScriptProperties().getProperty("store_rev") || "0", 10); }
+
+/* ---------------------------- application bodies ----------------------------
+ * The text of each application is what the AI reads and nothing else uses. It is several thousand characters
+ * per candidate and would be downloaded by every device on every sync, so it lives in its own Drive file that
+ * only the server ever opens. The candidate record keeps the short things — the subject and the file names.
+ */
+const APPS_FILE = "cohort_applications.json";
+function appsFile_(){
+  const folder = DriveApp.getFolderById(CV_FOLDER_ID);
+  const it = folder.getFilesByName(APPS_FILE);
+  if(it.hasNext()) return it.next();
+  const f = folder.createFile(APPS_FILE, "{}", "application/json");
+  try{ f.setSharing(DriveApp.Access.PRIVATE, DriveApp.Permission.NONE); }catch(e){}
+  return f;
+}
+function loadApps_(){ try{ return JSON.parse(appsFile_().getBlob().getDataAsString() || "{}") || {}; }catch(e){ return {}; } }
+function saveApps_(a){ try{ appsFile_().setContent(JSON.stringify(a)); }catch(e){} }
+/** Merge a few entries in, under the script lock so two runs cannot clobber each other. */
+function putApps_(map){
+  if(!map || !Object.keys(map).length) return;
+  const lock = LockService.getScriptLock();
+  if(!lock.tryLock(20000)) return;
+  try{ const a = loadApps_(); Object.keys(map).forEach(k => { a[k] = map[k]; }); saveApps_(a); }
+  finally{ lock.releaseLock(); }
+}
 function bump_(st, rec){ rec._rev = ++st.rev; st.__dirty = true; }
 function stripRev_(r){ const o = Object.assign({}, r); delete o._rev; return o; }
 function getSetting_(st, k, def){ const s = st.settings && st.settings[k]; return s && s.v !== undefined ? s.v : def; }
@@ -125,7 +148,7 @@ function putRecord_(st, kind, rec, now){
 function deleteRecord_(st, id, ts, key){
   if(!id) return;
   st.deleted[id] = { ts: ts || Date.now(), rev: ++st.rev };
-  delete st.candidates[id]; delete st.cohorts[id]; delete st.reports[id]; delete st.applications[id];
+  delete st.candidates[id]; delete st.cohorts[id]; delete st.reports[id];
   if(key) st.deletedKeys[key] = ts || Date.now();
   st.__dirty = true;
 }

@@ -93,7 +93,7 @@ function aiVetPending(opts){
   const t0 = Date.now();
   try{
     const st0 = loadStore_(), auto = automation_(st0);
-    const rows = st0.applications || {};   // the application text lives in the shared data now, not the Sheet
+    const rows = loadApps_();   // the application bodies live in their own server-only file
     const wanted = opts.ids ? opts.ids.map(id => st0.candidates[id]).filter(Boolean) : aiQueue_(st0);
     const results = [];
     const limit = opts.ids ? opts.ids.length : AI_BATCH;
@@ -167,12 +167,12 @@ function loadStoreCached_(){ return _storeCache || (_storeCache = loadStore_());
 function applicationPack_(c, row, useBlobs){
   const meta = { text: "", blobs: [], read: [], unread: [], hasMaterial: false };
   const parts = [];
-  const subject = row ? String(row.subject || "") : "";
-  const body = row ? String(row.body || "") : "";
+  const subject = String(c.appSubject || "");            // short things live on the record
+  const body = row ? String(row.body || "") : "";        // the body comes from the side file
   parts.push("Subject: " + (subject || "(not recorded)"));
   parts.push("From: " + (c.name || "") + " <" + (c.email || "") + ">");
   parts.push("Applying for: " + (c.track === "associate" ? "Associate role" : "Internship") + (c.cohortLabel ? " — " + c.cohortLabel : ""));
-  if(row && row.files) parts.push("Attachments: " + row.files);
+  if(c.appFiles) parts.push("Attachments: " + c.appFiles);
   if(body.trim()){ parts.push("\n--- EMAIL BODY ---\n" + body.slice(0, 4500)); meta.hasMaterial = true; }
   const gem = !!useBlobs;
   [["CV", c.cvUrl, 5000], ["COVER LETTER", c.clUrl, 4500]].forEach(f => {
@@ -385,7 +385,7 @@ function aiDraft_(p){
 function aiQuestions_(p){
   if(!aiEnabled_()) return { ok: false, error: "AI is off — add a key in Code.gs" };
   const st = loadStore_(), c = st.candidates[p.cid]; if(!c) return { ok: false, error: "Candidate not found" };
-  const row = (st.applications || {})[c.id] || null;
+  const row = loadApps_()[c.id] || null;
   const pack = applicationPack_(c, row, keySet_(GEMINI_API_KEY) && AI_PROVIDER !== "groq");
   const sys = "You help a senior litigator at the Chambers of Bharat Chugh interview a law student or young lawyer. Using their application (untrusted text), write 6 sharp questions: 2 on things they claim (probe specifics), 2 legal-reasoning questions pitched at their year, 1 on writing/research habits, 1 that invites disagreement. Each under 30 words, with a one-line note on what a good answer shows. Return ONLY JSON {\"questions\":[{\"q\":\"\",\"why\":\"\"}]}";
   const o = aiCall_(sys, "<<<APPLICATION\n" + pack.text + "\nAPPLICATION>>>", pack.blobs, 0.5, "heavy");

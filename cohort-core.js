@@ -82,7 +82,7 @@ export function normalizeCohort(c){
 export function normalizeCandidate(c){
   if(!c) return c;
   const str = ['key','cohortId','name','email','phone','track','grantedMode','processMode','year','college','city','source','referredBy',
-    'pqe','barEnrol','gradYear','currentRole','cvUrl','clUrl','emailPdfUrl','otherUrl','ndaUrl','govtIdUrl','filesFolder','stage','outcome','rejectReason','rejectedBy','notes','ivConfirm'];
+    'pqe','barEnrol','gradYear','currentRole','cvUrl','clUrl','emailPdfUrl','otherUrl','ndaUrl','govtIdUrl','filesFolder','appSubject','appFiles','stage','outcome','rejectReason','rejectedBy','notes','ivConfirm'];
   str.forEach(k => { if(c[k] == null) c[k] = ''; });
   if(c.preferredMode == null || c.preferredMode === undefined) c.preferredMode = c.mode === 'online' ? 'online' : (c.mode === 'offline' ? 'offline' : '');
   if(c.program == null) c.program = '';

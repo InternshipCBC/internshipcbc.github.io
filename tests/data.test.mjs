@@ -15,11 +15,13 @@ let st = E.store();
 const riya = Object.values(st.candidates).find(c => c.email === 'riya@example.com');
 ok(!!riya, 'the application created a candidate record');
 
-// --- the store is the source of truth, and the heavy text stays on the server -------------------
-ok(!!st.applications && !!st.applications[riya.id], 'the application text is kept in its own server-only section');
-ok(/would like to apply/.test(st.applications[riya.id].body), 'the body is there for the AI to read');
-ok(!('appBody' in riya) && !('appSubject' in riya), 'the candidate record carries no bulk text, so the sync stays light');
-eq(st.applications[riya.id].files, 'CV_Riya.pdf | CoverLetter_Riya.pdf', 'the attachment names are recorded');
+// --- the store is the source of truth, and the heavy text stays off it --------------------------
+const apps = E.ctx.loadApps_();
+ok(!!apps[riya.id], 'the application body is kept in its own server-only Drive file');
+ok(/would like to apply/.test(apps[riya.id].body), 'the body is there for the AI to read');
+ok(!('appBody' in riya), 'the body is not on the candidate record, so the sync stays light');
+eq(riya.appSubject, 'Career - Internship for January 2027', 'the short subject is on the record');
+eq(riya.appFiles, 'CV_Riya.pdf | CoverLetter_Riya.pdf', 'the attachment names are recorded');
 ok(riya.cvUrl && riya.clUrl, 'the CV and cover letter are linked on the record');
 ok(riya.filesFolder, 'the record links to the candidate folder');
 ok(riya.intakeTs > 0, 'the record carries when the application arrived');
@@ -30,6 +32,8 @@ const wire = JSON.stringify(pulled);
 ok(!/would like to apply/.test(wire), 'the application body is not sent to devices');
 ok(/riya@example.com/.test(wire), 'the candidate itself is sent');
 ok(!('applications' in pulled) && !('acked' in pulled), 'the server-only sections are not part of a pull');
+const whole = JSON.stringify(E.store());
+ok(!/would like to apply/.test(whole), 'the body is not even in the file devices download');
 
 // --- acknowledgements are remembered in the store ------------------------------------------------
 ok(Object.keys(st.acked || {}).length > 0, 'the acknowledgement is recorded in the shared data');
@@ -60,8 +64,9 @@ eq(Object.keys(st.candidates).length, 1, 'and does not create a second record');
 E.ctx.withStore_(s => { E.ctx.deleteRecord_(s, riya.id, Date.now(), riya.key); });
 st = E.store();
 ok(!st.candidates[riya.id], 'the candidate is gone');
-ok(!st.applications[riya.id], 'the application text is gone with it');
 ok(!!st.deletedKeys[riya.key], 'and the key is remembered so Gmail does not re-file it');
+E.ctx.pruneApplications_();
+ok(!E.ctx.loadApps_()[riya.id], 'the nightly prune drops the application body with them');
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
