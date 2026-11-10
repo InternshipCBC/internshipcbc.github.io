@@ -1,5 +1,5 @@
 /**
- * Cohort V23 — AI.gs : the AI screener, reply reader, drafting help and the dashboard's assistant.
+ * Cohort V24 — AI.gs : the AI screener, reply reader, drafting help and the dashboard's assistant.
  * Keys and the provider are set in Code.gs. With no key this file does nothing; everything else still works.
  *
  * What it does, every 15 minutes (and on demand from the dashboard):
@@ -73,7 +73,8 @@ function aiVetPending(opts){
       if(out && out.rateLimited){ h.note = "AI providers busy (free-tier rate limit) — continues next run"; break; }
       if(!out || out.error){ h.errors++; h.err = out && out.error; results.push({ cid: c.id, out: null, meta: pack, error: (out && out.error) || "no answer" }); continue; }
       results.push({ cid: c.id, out: normaliseScore_(out), meta: pack });
-      if(rows[c.id]){ try{ appSheet_().getRange(rows[c.id]._row, sheetHead_(appSheet_()).indexOf("AI") + 1).setValue(JSON.stringify({ rec: out.recommendation, conf: out.confidence, at: new Date().toISOString() })); }catch(e){} }
+      if(rows[c.id]){ try{ const sh = appSheet_(); const col = sheetHead_(sh).indexOf("AI") + 1;
+        if(col > 0) sh.getRange(rows[c.id]._row, col).setValue(JSON.stringify({ rec: out.recommendation, conf: out.confidence, at: new Date().toISOString() })); }catch(e){} }
       Utilities.sleep(1200);
     }
     // candidate replies waiting to be read

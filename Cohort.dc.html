@@ -71,6 +71,11 @@ th{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;
 .btn-l{background:transparent;border-color:transparent;color:var(--t2);padding:4px 8px;font-size:11.5px}
 .seg{display:flex;gap:3px;background:var(--bg);border-radius:9px;padding:3px;border:1px solid var(--bd);overflow-x:auto;max-width:100%;margin-bottom:14px}
 .seg-fit{width:fit-content}
+.rail{display:flex;align-items:stretch;gap:0;overflow-x:auto;background:var(--sf);border:1px solid var(--bd);border-radius:11px;padding:5px;margin-bottom:10px;box-shadow:var(--sh)}
+.rail-s{display:inline-flex;align-items:center;gap:7px;padding:7px 12px;border-radius:8px;font-size:12px;font-weight:700;white-space:nowrap;flex:0 0 auto}
+.rail-a{display:flex;align-items:center;color:var(--bdL);font-size:12px;flex:0 0 auto;padding:0 1px}
+.railhint{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:12.5px;color:var(--t2);background:var(--acL);border:1px solid var(--ac);border-radius:10px;padding:9px 14px;margin-bottom:14px}
+.chk{display:flex;gap:9px;align-items:flex-start;padding:7px 0;border-bottom:1px solid var(--bd);font-size:12.5px}
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
 .stat{background:var(--sf);border-radius:var(--r);border:1px solid var(--bd);box-shadow:var(--sh);padding:14px 18px}
 .stat-l{font-size:11.5px;color:var(--t2)}
@@ -211,6 +216,31 @@ th{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;
     </div>
   </sc-for>
 
+  <!-- ============ STAGE RAIL (the one process, every page) ============ -->
+  <sc-if value="{{ showRail }}">
+    <div>
+      <div class="rail">
+        <sc-for list="{{ rail }}" as="s">
+          <div style="display:flex;align-items:center">
+            <span style="{{ s.arrowStyle }}" class="rail-a">›</span>
+            <button onClick="{{ s.go }}" title="{{ s.title }}" class="rail-s" style="{{ s.style }}">
+              <i class="{{ s.icon }}" style="font-size:14px"></i>
+              <span>{{ s.label }}</span>
+              <span style="{{ s.cntStyle }}">{{ s.cnt }}</span>
+            </button>
+          </div>
+        </sc-for>
+      </div>
+      <sc-if value="{{ hasRailHint }}">
+        <div class="railhint">
+          <i class="ph ph-arrow-bend-down-right" style="color:var(--ac)"></i>
+          <span class="grow" style="min-width:180px">{{ railHint }}</span>
+          <button onClick="{{ railGo }}" class="btn btn-s btn-a">{{ railCta }}</button>
+        </div>
+      </sc-if>
+    </div>
+  </sc-if>
+
   <!-- ============ COHORTS ============ -->
   <sc-if value="{{ pageCohorts }}">
     <div class="page">
@@ -283,7 +313,7 @@ th{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;
           </div>
         </div>
         <div class="card">
-          <div class="card-h">Timeline · {{ activeCohortLabel }}</div>
+          <div class="card-h"><span>Timeline · {{ activeCohortLabel }}</span><span class="small muted" style="font-weight:500">Editable in Timeline &amp; Reporting</span></div>
           <div style="padding:6px 20px 14px">
             <sc-for list="{{ deadlines }}" as="d">
               <div style="display:flex;gap:11px;padding:9px 0;border-bottom:1px solid var(--bd)">
@@ -373,6 +403,9 @@ th{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;
   <sc-if value="{{ pageInterviews }}">
     <div class="page">
       <div class="seg"><sc-for list="{{ ivTabs }}" as="t"><button onClick="{{ t.go }}" style="{{ t.style }}">{{ t.label }}<span style="{{ t.cntStyle }}">{{ t.cnt }}</span></button></sc-for></div>
+      <sc-if value="{{ ivHasNext }}">
+        <div class="railhint"><i class="ph ph-arrow-bend-down-right" style="color:var(--ac)"></i><span class="grow" style="min-width:180px">{{ ivNextText }}</span><button onClick="{{ ivNext }}" class="btn btn-s btn-a">Move them to Interview</button></div>
+      </sc-if>
       <div class="card" style="margin-bottom:12px">
         <div class="card-h"><span><i class="ph ph-calendar-plus" style="color:var(--ac)"></i> Bulk schedule</span><span class="small muted" style="font-weight:500">Tick candidates below, then fill back-to-back slots in one go.</span></div>
         <div class="card-b">
@@ -439,8 +472,11 @@ th{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;
       <div class="row" style="margin-bottom:14px">
         <p class="grow small muted" style="min-width:200px;margin:0">{{ apIntro }}</p>
         <sc-if value="{{ apShowSelection }}"><button onClick="{{ apBypassAll }}" class="btn btn-w"><i class="ph ph-fast-forward"></i> Bypass all pending…</button></sc-if>
-        <button onClick="{{ apExport }}" class="btn"><i class="ph ph-file-pdf"></i> Final list</button>
+        <button onClick="{{ apExport }}" class="btn"><i class="ph ph-export"></i> {{ apExportLabel }}</button>
       </div>
+      <sc-if value="{{ apHasNext }}">
+        <div class="railhint"><i class="ph ph-arrow-bend-down-right" style="color:var(--ac)"></i><span class="grow" style="min-width:180px">{{ apNextText }}</span><button onClick="{{ apNext }}" class="btn btn-s btn-a">Open Onboarding</button></div>
+      </sc-if>
 
       <sc-if value="{{ apShowSelection }}">
         <div class="card" style="overflow:hidden">
@@ -518,10 +554,25 @@ th{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;
   <sc-if value="{{ pageOnboarding }}">
     <div class="page">
       <div class="stats"><sc-for list="{{ obStats }}" as="s"><div class="stat"><div style="{{ s.valStyle }}">{{ s.value }}</div><div class="stat-l">{{ s.label }}</div></div></sc-for></div>
-      <div class="card card-b row" style="margin-bottom:12px;gap:12px">
-        <div class="grow" style="min-width:220px"><label><i class="ph ph-whatsapp-logo" style="color:#25d366"></i> {{ obWaMonth }} WhatsApp group link</label><input value="{{ obWaLink }}" onInput="{{ onObWaLink }}" placeholder="https://chat.whatsapp.com/… — created fresh each month"></div>
-        <div class="small muted" style="max-width:300px">Goes into the offer email for this cohort. Joining stays approval-based inside WhatsApp itself.</div>
+      <div class="card" style="margin-bottom:12px">
+        <div class="card-h"><span><i class="ph ph-checks" style="color:var(--ac)"></i> Before the offer goes out</span><span style="{{ obReadyStyle }}">{{ obReadyNote }}</span></div>
+        <div class="card-b">
+          <sc-for list="{{ obReady }}" as="r">
+            <div class="chk">
+              <i class="{{ r.icon }}" style="{{ r.iconStyle }}"></i>
+              <div class="grow"><b>{{ r.label }}</b> <span class="muted">{{ r.detail }}</span></div>
+              <sc-if value="{{ r.hasCta }}"><button onClick="{{ r.go }}" class="btn btn-s">{{ r.cta }}</button></sc-if>
+            </div>
+          </sc-for>
+          <div class="row" style="margin-top:12px;gap:12px">
+            <div class="grow" style="min-width:220px"><label><i class="ph ph-whatsapp-logo" style="color:#25d366"></i> {{ obWaMonth }} WhatsApp group link</label><input value="{{ obWaLink }}" onInput="{{ onObWaLink }}" placeholder="https://chat.whatsapp.com/… — created fresh each month"></div>
+            <div class="small muted" style="max-width:300px">Goes into the offer email for this cohort. Joining stays approval-based inside WhatsApp itself.</div>
+          </div>
+        </div>
       </div>
+      <sc-if value="{{ obHasNext }}">
+        <div class="railhint"><i class="ph ph-arrow-bend-down-right" style="color:var(--ac)"></i><span class="grow" style="min-width:180px">{{ obNextText }}</span><button onClick="{{ obNext }}" class="btn btn-s btn-a">Open Running Cohort</button></div>
+      </sc-if>
       <p class="small muted" style="margin-bottom:12px">{{ obIntro }}</p>
       <div class="card" style="overflow:hidden">
         <div class="tw">
@@ -566,6 +617,9 @@ th{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;
           </div>
         </div>
       </div>
+      <sc-if value="{{ runHasNext }}">
+        <div class="railhint"><i class="ph ph-arrow-bend-down-right" style="color:var(--ac)"></i><span class="grow" style="min-width:180px">{{ runNextText }}</span><button onClick="{{ runNext }}" class="btn btn-s btn-a">Open Extensions</button></div>
+      </sc-if>
       <div class="card" style="overflow:hidden">
         <div class="tw">
           <table class="tbl" style="min-width:900px">
@@ -600,6 +654,9 @@ th{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;
     <div class="page">
       <div class="stats"><sc-for list="{{ extStats }}" as="s"><div class="stat"><div style="{{ s.valStyle }}">{{ s.value }}</div><div class="stat-l">{{ s.label }}</div></div></sc-for></div>
       <div class="row" style="margin-bottom:12px"><p class="grow small muted" style="margin:0;min-width:200px">{{ extIntro }}</p><button onClick="{{ extExport }}" class="btn"><i class="ph ph-file-xls"></i> Export</button></div>
+      <sc-if value="{{ extHasNext }}">
+        <div class="railhint"><i class="ph ph-arrow-bend-down-right" style="color:var(--ac)"></i><span class="grow" style="min-width:180px">{{ extNextText }}</span><button onClick="{{ extNext }}" class="btn btn-s btn-a">Open Approvals → Extensions</button></div>
+      </sc-if>
       <div class="card" style="overflow:hidden">
         <div class="tw">
           <table class="tbl" style="min-width:960px">
@@ -703,7 +760,7 @@ th{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;
       <div class="{{ aiStatusCls }}" style="margin-bottom:14px">
         <i class="{{ aiStatusIcon }}" style="font-size:18px;flex-shrink:0;margin-top:1px"></i>
         <div class="grow"><b>{{ aiStatusTitle }}</b> <span>{{ aiStatusBody }}</span></div>
-        <button onClick="{{ aiRunNow }}" disabled="{{ aiRunBusy }}" class="btn btn-s"><i class="ph ph-play"></i> {{ aiRunLabel }}</button>
+        <button onClick="{{ aiRunNow }}" disabled="{{ aiRunDisabled }}" title="Ask the AI screener to read new applications now" class="btn btn-s"><i class="ph ph-play"></i> {{ aiRunLabel }}</button>
       </div>
       <div class="seg"><sc-for list="{{ aiTabs }}" as="t"><button onClick="{{ t.go }}" style="{{ t.style }}">{{ t.label }}<span style="{{ t.cntStyle }}">{{ t.cnt }}</span></button></sc-for></div>
 
@@ -763,7 +820,7 @@ th{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;
               </div>
             </div>
           </sc-for>
-          <sc-if value="{{ aiFlagsEmpty }}"><div class="card empty">Nothing to look at. Flags appear here when the AI (or the Gmail intake) spots something a person should decide.</div></sc-if>
+          <sc-if value="{{ aiFlagsEmpty }}"><div class="card empty">Nothing to look at for this cohort — no missing CVs, failed emails, unmarked interviews or awaited NDAs.</div></sc-if>
         </div>
       </sc-if>
 
@@ -795,7 +852,7 @@ th{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;
         <div style="max-width:860px;display:flex;flex-direction:column;min-height:calc(100dvh - 300px)">
           <div class="row" style="margin-bottom:12px"><sc-for list="{{ aiPrompts }}" as="p"><button onClick="{{ p.go }}" class="btn btn-s" style="border-radius:20px;font-weight:600;color:var(--t2)">{{ p.label }}</button></sc-for></div>
           <div class="card" style="flex:1;min-height:260px;overflow-y:auto;padding:16px 18px;margin-bottom:12px;display:flex;flex-direction:column;gap:12px">
-            <sc-if value="{{ aiEmpty }}"><div style="margin:auto;text-align:center;color:var(--mu);font-size:13px;line-height:1.7"><i class="ph ph-sparkle" style="font-size:26px;color:var(--ac)"></i><br>Ask about this cohort — "Who are the strongest applicants so far?"<br>"How many offline vs online finalists?" · "Draft 5 interview questions for a 3rd-year."</div></sc-if>
+            <sc-if value="{{ aiEmpty }}"><div style="margin:auto;text-align:center;color:var(--mu);font-size:13px;line-height:1.7"><i class="ph ph-sparkle" style="font-size:26px;color:var(--ac)"></i><br>{{ aiChatHint }}</div></sc-if>
             <sc-for list="{{ aiMsgs }}" as="m">
               <div style="{{ m.rowStyle }}">
                 <div style="{{ m.bubbleStyle }}">{{ m.text }}</div>
@@ -1207,6 +1264,7 @@ th{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;
                     <sc-if value="{{ f.canUpload }}"><button onClick="{{ f.onUpload }}" title="Upload to Drive" class="btn btn-i"><i class="ph ph-upload-simple"></i></button></sc-if>
                     <sc-if value="{{ f.canRestore }}"><button onClick="{{ f.onRestore }}" title="Take it out of the Drive trash" class="btn btn-i btn-w"><i class="ph ph-arrow-counter-clockwise"></i></button></sc-if>
                     <a href="{{ f.href }}" target="_blank" rel="noopener" title="Open" style="{{ f.openStyle }}" class="btn btn-i"><i class="ph ph-arrow-square-out"></i></a>
+                    <sc-if value="{{ f.canRemove }}"><button onClick="{{ f.onRemove }}" title="Remove this link from the record (the Drive file is not deleted)" class="btn btn-i btn-d"><i class="ph ph-x"></i></button></sc-if>
                   </div>
                 </div>
               </sc-for>
@@ -1830,7 +1888,7 @@ class Component extends DCLogic {
       this.setState({diagBusy:false,diag:{rows,advice,url:u+'?action=ping'}}); return;
     }
     try{ const j=await this.api('ping',{},{jsonp:true}); add(!!j.auth,'Secret token',j.auth?'accepted':'NOT accepted — it must equal API_TOKEN in Code.gs');
-      add(j.version==='v23','Server code version',j.version==='v23'?'v23 (current)':((j.version||'old')+' — replace the Apps Script files from Playbook → Apps Script and deploy a New version'));
+      add(j.version==='v24','Server code version',j.version==='v24'?'v24 (current)':((j.version||'old')+' — replace the Apps Script files from Playbook → Apps Script and deploy a New version'));
       if(!j.auth) advice='Fix the token, then press Test & sync.';
       else { try{ const h=await this.api('health',{},{jsonp:true}); (h.checks||[]).forEach(c=>add(c.ok,c.label,c.detail));
         if(h.webAppUrl&&h.webAppUrl!==u) add(false,'Address matches the deployment','the script reports '+h.webAppUrl+' — use that one'); }catch(e){ add(false,'Server health',e.message); } }
@@ -1907,8 +1965,10 @@ class Component extends DCLogic {
   backStage(c){
     const seq=this.STAGES, i=seq.indexOf(c.stage); if(i<1) return;
     const to=seq[i-1];
+    const from=c.stage;
     const go=()=>{ const t=this.now(); this.C.applyChange(c,'stage',to,t);
-      if(c.stage==='interview'&&c.interview.result==='pass') this.C.applyChange(c,'interview.result','',t);
+      // Leaving Finalist means the "Cleared" verdict no longer holds, or the verdict would push them straight back.
+      if(from==='final'&&c.interview.result==='pass') this.C.applyChange(c,'interview.result','',t);
       this.log(c,'Moved back to '+this.stageName(to)); this.changed('Moved back to '+this.stageName(to)); };
     if(c.stage==='joined') this.ask('Move '+(c.name||'this person')+' back to Finalist?','They leave the Running Cohort and Onboarding shows them as not yet offered. Emails already sent are not recalled.',go,{okLabel:'Move back'});
     else go();
@@ -1978,9 +2038,12 @@ class Component extends DCLogic {
     },{okLabel:'Move to Associates'}); }
 
   /* ======================= email ======================= */
+  /** Saved templates keep only the wording you edited; the name, stage and tag always come from the current defaults,
+   *  so re-filing a template under a different stage reaches everyone without wiping their wording. */
   templates(){ const R=this.R, saved=this.S('emailTemplates'); const defs=(R&&R.DEFAULT_TEMPLATES)||[];
     if(!Array.isArray(saved)||!saved.length) return defs.map(t=>Object.assign({},t));
-    const out=saved.map(t=>Object.assign({},defs.find(d=>d.key===t.key)||{},t));
+    const out=saved.map(t=>{ const d=defs.find(x=>x.key===t.key); if(!d) return Object.assign({},t);
+      return Object.assign({},d,{ subject:t.subject!=null?t.subject:d.subject, body:t.body!=null?t.body:d.body }); });
     defs.forEach(d=>{ if(!out.find(t=>t.key===d.key)) out.push(Object.assign({},d)); });
     return out; }
   blockList(){ return ['internship.cbc@gmail.com','bharatchugh.in'].concat(this.S('noReplyList')||[]); }
@@ -2170,11 +2233,16 @@ class Component extends DCLogic {
   /** The month an intern is currently interning in: their joining month, or the last approved extension. */
   currentCohortOf(c){ const a=(c.extensions||[]).filter(x=>x.status==='approved').map(x=>this.coh(x.targetCohortId)).filter(Boolean);
     const all=[this.coh(c.cohortId)].concat(a).filter(Boolean); return all.sort((x,y)=>(x.year*12+this.C.monthIndex(x.month))-(y.year*12+this.C.monthIndex(y.month))).pop()||null; }
-  extTargetOptions(c){ const cur=this.currentCohortOf(c)||this.cohort; const out=[]; if(!cur) return out;
+  /** The month an extension runs FROM: the month on screen, or the intern's current month if that is later. */
+  extFromCohort(c){ const cur=this.currentCohortOf(c), v=this.cohort;
+    if(!v) return cur; if(!cur) return v;
+    const k=x=>x.year*12+this.C.monthIndex(x.month);
+    return k(v)>=k(cur)?v:cur; }
+  extTargetOptions(c){ const cur=this.extFromCohort(c); const out=[]; if(!cur) return out;
     let m=cur.month, y=cur.year; for(let i=0;i<4;i++){ const n=this.C.nextMonthOf(m,y); out.push({id:n.id,label:n.label,month:n.month,year:n.year}); m=n.month; y=n.year; } return out; }
   raiseExtension(c,targetId){
     const opt=this.extTargetOptions(c).find(o=>o.id===targetId)||this.extTargetOptions(c)[0]; if(!opt) return;
-    const from=this.currentCohortOf(c);
+    const from=this.extFromCohort(c);
     const open=(c.extensions||[]).find(x=>x.status==='pending');
     if(open){ this.flash('There is already a pending request','warn'); return; }
     this.ask('Request an extension for '+(c.name||'this intern')+'?','From '+((from&&from.label)||'—')+' into '+opt.label+'. It goes to Approvals → Extensions for Mayank Sir.',()=>{
@@ -2335,23 +2403,51 @@ class Component extends DCLogic {
     const l=(this.S('noReplyList')||[]).slice(); if(l.indexOf(v)>-1){ this.flash('Already on the list'); return; }
     l.push(v); this.setState({noReplyDraft:''}); this.setS('noReplyList',l,'Added to restricted emails'); }
 
-  /* ======================= AI Desk: data ======================= */
+  /* ======================= Review Desk: data ======================= */
   auto(){ return Object.assign(this.C.defaultAutomation(), this.S('automation')||{}); }
   setAuto(k,v,msg){ const a=Object.assign({},this.auto(),{[k]:v}); this.setS('automation',a,msg); }
   aiScoreOf(c){ const a=c.aiSuggest; return a&&typeof a.score==='number'?a.score:null; }
   openFlags(c){ return (c.aiFlags||[]).filter(f=>!f.resolved); }
   liveCohortIds(){ const nowK=new Date().getFullYear()*12+new Date().getMonth(); return new Set(this.data.cohorts.filter(c=>c.status!=='closed'&&(c.year*12+this.C.monthIndex(c.month))>=nowK).map(c=>c.id)); }
-  /** People the AI Desk covers: the selected month, plus (for replies) anyone currently in chambers. */
+  /** People the Review Desk covers: the selected month, plus (for replies) anyone currently in chambers. */
   aiScope(){ const id=this.state.activeCohortId, run=new Set(this.runningFor(id).map(c=>c.id)); return this.data.candidates.filter(c=>!c.draft&&(c.cohortId===id||run.has(c.id))&&((this.state.trackScope||'intern')===(c.track||'intern'))); }
   aiReviewList(){ const order={shortlist:0,maybe:1,reject:2};
     return this.active(this.cohCands()).filter(c=>c.stage==='applied').sort((a,b)=>{ const ra=a.aiSuggest&&a.aiSuggest.recommendation, rb=b.aiSuggest&&b.aiSuggest.recommendation;
       const oa=ra in order?order[ra]:3, ob=rb in order?order[rb]:3; if(oa!==ob) return oa-ob; return (this.aiScoreOf(b)||-1)-(this.aiScoreOf(a)||-1); }); }
   aiFlagList(showResolved){ const out=[]; this.aiScope().forEach(c=>(c.aiFlags||[]).forEach(f=>{ if(showResolved||!f.resolved) out.push({c,f}); }));
-    const sev={high:0,warn:1,info:2}; return out.sort((a,b)=>(a.f.resolved?1:0)-(b.f.resolved?1:0)||(sev[a.f.severity]||2)-(sev[b.f.severity]||2)||(b.f.ts||0)-(a.f.ts||0)); }
+    return this.sortFlags(out); }
+  sortFlags(list){ const sev={high:0,warn:1,info:2};
+    return list.sort((a,b)=>(a.f.resolved?1:0)-(b.f.resolved?1:0)||(sev[a.f.severity]||2)-(sev[b.f.severity]||2)||(b.f.ts||0)-(a.f.ts||0)); }
+  /** Checks derived from the records themselves — they need no AI, so the Desk is useful even with the AI switched off. */
+  derivedFlags(){
+    const out=[], today=this.todayStr(), now=Date.now();
+    const D=(c,type,severity,ts,text)=>out.push({c,f:{id:'d_'+type+'_'+c.id,type:'d_'+type,severity,ts:ts||0,text,derived:true,resolved:false}});
+    this.aiScope().forEach(c=>{
+      if(this.isRejected(c)) return;
+      const email=String(c.email||'').trim();
+      if(!email) D(c,'noemail','high',c.createdAt,'No email address on the record — nothing can be sent to this candidate.');
+      else if(this.isBlocked(email)) D(c,'blocked','warn',c.createdAt,'This address is on the restricted list, so no email will ever go to it: '+email);
+      const lm=(c.mails||[]).slice(-1)[0];
+      if(lm&&!lm.ok) D(c,'mailfail','high',lm.ts,'The last email ("'+(lm.name||lm.key)+'") did not send: '+(lm.err||'unknown error')+'.');
+      if(!c.cvUrl&&['applied','shortlisted','interview'].indexOf(c.stage)>-1) D(c,'nocv','warn',c.createdAt,'No CV on the record. Ask for it, or paste the Drive link on the Profile tab.');
+      if(c.stage==='interview'&&c.interview.date&&c.interview.date<today&&!c.interview.result) D(c,'unmarked','warn',this.C.istTs(c.interview.date,c.interview.slot),'The interview on '+c.interview.date+' has no verdict yet.');
+      if(c.stage==='interview'&&c.interview.date&&c.interview.date>=today&&c.ivConfirm==='no') D(c,'rsvpno','warn',this.C.istTs(c.interview.date,c.interview.slot),'Said they cannot make the slot on '+c.interview.date+' — offer another time.');
+      if(c.stage==='final'&&!this.approved(c)&&c.interview.result==='pass') D(c,'awaitsign','info',c.updatedAt,'Finalist waiting for Mayank Sir’s sign-off.');
+      if(c.stage==='joined'&&(c.nda.status||'pending')!=='signed'&&(c.onboard.offerSentAt||0)&&now-(c.onboard.offerSentAt||0)>7*864e5) D(c,'nda','warn',c.onboard.offerSentAt,'The signed NDA is still awaited, more than a week after the offer.');
+    });
+    return out;
+  }
+  /** Everything a person should look at: what the script/AI stored, plus the checks above.
+   *  Memoised for the duration of one render — the sidebar, the Overview and the Desk all ask for it. */
+  deskFlagList(showResolved){
+    const k='desk'+(showResolved?'1':'0'), m=this._memo||(this._memo={});
+    if(!(k in m)) m[k]=this.sortFlags(this.aiFlagList(showResolved).concat(this.derivedFlags()));
+    return m[k];
+  }
   aiReplyList(showHandled){ const out=[]; this.aiScope().forEach(c=>(c.inbox||[]).forEach(m=>{ if(showHandled||!m.handled) out.push({c,m}); })); return out.sort((a,b)=>(b.m.ts||0)-(a.m.ts||0)); }
   replyNeedsAction(m){ return !m.handled&&['question','rsvp_no','reschedule','withdraw','other'].indexOf(m.intent)>-1; }
 
-  /* ======================= AI Desk: actions ======================= */
+  /* ======================= Review Desk: actions ======================= */
   async refreshAiHealth(force){
     if(!this.apiUrl()) return; if(!force&&this._aiHealthAt&&Date.now()-this._aiHealthAt<120000) return; if(this._aiHealthBusy) return;
     this._aiHealthBusy=true;
@@ -2393,6 +2489,16 @@ class Component extends DCLogic {
   }
   flagActions(c,f){
     const A=(label,cls,fn)=>({label,cls:'btn btn-s '+(cls||''),onClick:fn});
+    if(f.derived) switch(f.type){
+      case 'd_noemail': case 'd_blocked': return [A('Open record','btn-a',()=>this.openCand(c.id,'profile')),A('Restricted list','',()=>this.go('settings',{setTab:'chambers'}))];
+      case 'd_mailfail': return [A('Try again','btn-a',()=>this.openCand(c.id,'decision')),A('See the journey','',()=>this.openCand(c.id,'hist'))];
+      case 'd_nocv': return [A('Ask for it','btn-a',()=>this.mailFlow(c,'missing_docs')),A('Add the link','',()=>this.openCand(c.id,'profile'))];
+      case 'd_unmarked': return [A('Mark it now','btn-a',()=>this.openCand(c.id,'iv')),A('Interview tab','',()=>this.go('interviews',{ivTab:'overdue'}))];
+      case 'd_rsvpno': return [A('Re-schedule','btn-a',()=>this.openCand(c.id,'iv')),A('Reply','',()=>this.openCompose(c,{}))];
+      case 'd_awaitsign': return [A('Approvals','btn-a',()=>this.go('approvals',{apprTab:'pending'})),A('Open record','',()=>this.openCand(c.id,'decision'))];
+      case 'd_nda': return [A('Remind them','btn-a',()=>this.mailFlow(c,'nda_remind')),A('Onboarding','',()=>this.go('onboarding'))];
+      default: return [A('Open record','',()=>this.openCand(c.id,'profile'))];
+    }
     const done=A(f.resolved?'Re-open':'Done','',()=>{ if(f.resolved){ const t=this.now(); c.aiFlags=c.aiFlags.map(x=>x.id===f.id?Object.assign({},x,{resolved:false,ts:t}):x); this.C.applyChange(c,'aiFlagsTs',t,t); this.markDirty('candidates',c.id); this.changed(); } else this.resolveFlag(c,f); });
     if(f.resolved) return [done];
     switch(f.type){
@@ -2440,7 +2546,7 @@ class Component extends DCLogic {
     }catch(e){ this.setState({compose:Object.assign({},this.state.compose,{busy:false})}); this.flash('Not sent: '+e.message,'err'); } }
   composeVM(){ const cp=this.state.compose; if(!cp) return {composeOn:false}; const c=this.cand(cp.cid)||{}; const m=cp.msgId?(c.inbox||[]).find(x=>x.msgId===cp.msgId):null;
     return { composeOn:true, composeTitle:m?('Reply to '+(c.name||'')):('Email '+(c.name||'')), composeTo:c.email||'—',
-      composeHow:(m&&m.threadId)||c.gmailThread?'goes inside their Gmail thread when possible':'sent as a new email',
+      composeHow:(m&&m.threadId)||c.gmailThread?'goes inside their Gmail thread where possible — Gmail keeps the thread’s own subject on a reply':'sent as a new email',
       composeQuote:m?((m.subject||'')+'\n'+(m.text||'')):'', composeInstr:cp.instr, onComposeInstr:(e)=>this.setState({compose:Object.assign({},this.state.compose,{instr:e.target.value})}),
       composeDraft:()=>this.composeDraft(), composeDraftLabel:cp.busy?'Working…':'Draft with AI', composeBusy:!!cp.busy,
       composeSubject:cp.subject, onComposeSubject:(e)=>this.setState({compose:Object.assign({},this.state.compose,{subject:e.target.value})}),
@@ -2466,17 +2572,18 @@ class Component extends DCLogic {
     catch(e){ this.setState({qBusy:''}); this.flash('Could not get questions: '+e.message,'err'); }
   }
 
-  /* ======================= AI Desk: view ======================= */
+  /* ======================= Review Desk: view ======================= */
   aiVM(){
     const url=this.apiUrl(), tab=this.state.aiTab||'review', h=this._aiHealth||{}, ai=h.ai||null;
     if(url) this.refreshAiHealth(false);
-    const rev=this.aiReviewList(), flags=this.aiFlagList(!!this.state.aiShowResolved), replies=this.aiReplyList(!!this.state.aiShowHandled);
-    const openFlagCount=this.aiFlagList(false).length, replyCount=this.aiReplyList(false).filter(x=>this.replyNeedsAction(x.m)).length;
+    const rev=this.aiReviewList(), flags=this.deskFlagList(!!this.state.aiShowResolved), replies=this.aiReplyList(!!this.state.aiShowHandled);
+    const openFlagCount=this.deskFlagList(false).length, replyCount=this.aiReplyList(false).filter(x=>this.replyNeedsAction(x.m)).length;
+    const aiOn=!!(url&&ai&&ai.enabled&&!h.error);
     // status strip
     let cls='banner b-info', icon='ph ph-sparkle', title='AI', body='';
-    if(!url){ cls='banner b-warn'; icon='ph ph-plugs'; title='Not connected.'; body='The AI runs inside the Google script. Connect this device in Settings → Sync first.'; }
+    if(!url){ cls='banner b-info'; icon='ph ph-list-checks'; title='This Desk works on its own.'; body='Applications to decide, checks that need a person, and candidates’ replies. The optional AI screener runs inside the Google script — connect this device in Settings → Sync to switch it on.'; }
     else if(h.error){ cls='banner b-err'; icon='ph ph-warning-circle'; title='Could not reach the script.'; body=h.error; }
-    else if(ai&&!ai.enabled){ cls='banner b-warn'; icon='ph ph-key'; title='AI is off.'; body='Add a free Gemini key (and optionally a Groq key) in Code.gs, run setup and deploy a New version. See "How it works".'; }
+    else if(ai&&!ai.enabled){ cls='banner b-info'; icon='ph ph-key'; title='The Desk is on; the AI screener is off.'; body='Everything here works without it. To switch the screener on, add a free Gemini key (and optionally a Groq key) in Code.gs, run setup and deploy a New version. See "How it works".'; }
     else if(ai){ const l=ai.last||{}; const ago=l.ts?Math.round((Date.now()-l.ts)/60000):null;
       title='AI is on.'; body=ai.info+' · reads CVs: '+(ai.canReadFiles?'yes':'no (turn on the Drive API service)')+(ago!=null?(' · last run '+(ago<1?'just now':ago+' min ago')+(l.vetted!=null?(': read '+l.vetted):'')+(l.err?(' — '+l.err):'')):'')+' · Google time today '+ai.budgetMin+'/90 min';
       if(l.err&&!l.vetted){ cls='banner b-warn'; } }
@@ -2491,7 +2598,8 @@ class Component extends DCLogic {
         checkStyle:this.box(on), checkMark:on?'✓':'', onToggle:()=>{ const s=new Set(this.state.aiRevSel||[]); s.has(c.id)?s.delete(c.id):s.add(c.id); this.setState({aiRevSel:[...s]}); },
         onShortlist:()=>this.aiDecide([c],'shortlist'), onReject:()=>this.aiDecide([c],'reject') }, this.recPill(a)); });
     const ids=rev.map(c=>c.id), allSel=ids.length&&ids.every(i=>sel.has(i)), selList=rev.filter(c=>sel.has(c.id));
-    const how=[['ph ph-tray-arrow-down','Reads every application','Every 15 minutes it reads new applications for the months that have not started yet — soonest month first — including the email, the CV and the cover letter (PDF, Word or scanned). Past months are never touched.'],
+    const how=[['ph ph-list-checks','The Desk itself needs no AI','"To review" is every application still at Applied. "Flags" gathers what needs a person — a missing CV, an email that failed, an interview held but not marked, an NDA still awaited — from the records themselves. "Replies" needs the Gmail script, but not an AI key. Everything below is the optional AI screener on top of that.'],
+      ['ph ph-tray-arrow-down','Reads every application','Every 15 minutes it reads new applications for the months that have not started yet — soonest month first — including the email, the CV and the cover letter (PDF, Word or scanned). Past months are never touched.'],
       ['ph ph-pencil-line','Fills in the blanks','Year, programme, college, city, phone, preferred mode, graduation year (and PQE for associates) — only where the record is empty. It never overwrites what someone typed.'],
       ['ph ph-gauge','Scores like Bharat Sir reads','Rates individuality, storytelling, passion, show-don’t-tell and original thought (1–5), checks the red lines (template, "Sir/Madam", empty, shoddy) and eligibility, and recommends Shortlist / Maybe / Not now with reasons. You see it next to your own rating and can adopt it with one click.'],
       ['ph ph-flag','Flags what needs a person','Not an application, missing CV or cover letter, possibly not eligible, applied before or rejected recently, couldn’t read a file, low confidence. Every flag has a button that fixes it.'],
@@ -2510,17 +2618,19 @@ class Component extends DCLogic {
     const bubble=role=>role==='user'?'max-width:82%;background:var(--acG);color:#fff;padding:10px 14px;border-radius:14px 14px 4px 14px;font-size:13px;line-height:1.55;white-space:pre-wrap'
       :'max-width:90%;background:var(--bg);border:1px solid var(--bd);color:var(--tx);padding:10px 14px;border-radius:14px 14px 14px 4px;font-size:13px;line-height:1.6;white-space:pre-wrap';
     return { pageAi:true,
-      aiStatusCls:cls, aiStatusIcon:icon, aiStatusTitle:title, aiStatusBody:body, aiRunNow:()=>this.aiRun([],'The AI is reading new applications…'), aiRunBusy:!!this.state.aiRunBusy, aiRunLabel:this.state.aiRunBusy?'Reading…':'Run now',
-      aiTabs:this.tab([['review','To review'],['flags','Flags'],['replies','Replies'],['chat','Assistant'],['reports','Activity'],['how','How it works']],tab,v=>this.setState({aiTab:v}),v=>v==='review'?rev.filter(c=>c.aiSuggest&&c.aiSuggest.recommendation).length:(v==='flags'?openFlagCount:(v==='replies'?replyCount:0))),
+      aiStatusCls:cls, aiStatusIcon:icon, aiStatusTitle:title, aiStatusBody:body, aiRunNow:()=>this.aiRun([],'The AI is reading new applications…'), aiRunBusy:!!this.state.aiRunBusy,
+      aiRunLabel:this.state.aiRunBusy?'Reading…':(aiOn?'Run now':'AI off'), aiRunDisabled:!!this.state.aiRunBusy||!aiOn,
+      aiTabs:this.tab([['review','To review'],['flags','Flags'],['replies','Replies'],['chat','Assistant'],['reports','Activity'],['how','How it works']],tab,v=>this.setState({aiTab:v}),v=>v==='review'?rev.length:(v==='flags'?openFlagCount:(v==='replies'?replyCount:0))),
       aiShowReview:tab==='review', aiShowFlags:tab==='flags', aiShowReplies:tab==='replies', aiShowChat:tab==='chat', aiShowReports:tab==='reports', aiShowHow:tab==='how',
-      aiReviewIntro:'Applications waiting in '+((this.cohort||{}).label||'this month')+', with the AI’s recommendation first. Tick several and accept in one go, or decide each yourself.',
+      aiReviewIntro:'Every application still at Applied in '+((this.cohort||{}).label||'this month')+'. Rate it on the record, then Shortlist or set it aside — neither sends an email.'+(aiOn?' The AI’s recommendation is shown first where it has read one.':''),
       aiRevRows:revRows, aiRevEmpty:!revRows.length, aiRevEmptyMsg:'Nothing waiting — every application for this month has been decided.',
       aiRevAll:()=>this.setState({aiRevSel:allSel?[]:ids}), aiRevAllStyle:this.box(allSel), aiRevAllMark:allSel?'✓':'', aiRevBulkOn:selList.length>0, aiRevSelCount:selList.length,
       aiAcceptSel:()=>this.aiDecide(selList,'accept'), aiShortlistSel:()=>this.aiDecide(selList,'shortlist'), aiRejectSel:()=>this.aiDecide(selList,'reject'),
       aiRerunSel:()=>this.aiRun(selList.slice(0,6).map(c=>c.id),'Re-reading '+Math.min(6,selList.length)+' application(s)…'), aiRevClear:()=>this.setState({aiRevSel:[]}),
-      aiFlagsIntro:'Things the AI or the Gmail intake wants a person to decide, for '+((this.cohort||{}).label||'this month')+' and the interns in chambers. Every button fixes it in one step.',
+      aiFlagsIntro:'Everything that needs a person, for '+((this.cohort||{}).label||'this month')+' and the interns in chambers — missing CVs, failed emails, unmarked interviews, awaited NDAs, plus anything the Gmail intake or the AI raised. Every button fixes it in one step.',
       aiShowResolvedBox:this.box(!!this.state.aiShowResolved), aiToggleResolved:()=>this.setState({aiShowResolved:!this.state.aiShowResolved}),
-      aiFlagRows:flags.map(({c,f})=>Object.assign({ name:c.name||c.email, when:this.fmtDT(f.ts), text:f.text, open:()=>this.openCand(c.id,f.type==='rsvp_no'?'iv':'app'),
+      aiFlagRows:flags.map(({c,f})=>Object.assign({ name:c.name||c.email||'(unnamed)', when:f.ts?this.fmtDT(f.ts):'—', text:f.text,
+        open:()=>this.openCand(c.id,(f.type==='rsvp_no'||f.type==='d_rsvpno'||f.type==='d_unmarked')?'iv':(f.derived?'profile':'app')),
         resolvedNote:f.resolved?('Resolved by '+(f.resolvedBy||'—')+(f.note?(' — '+f.note):'')):'', actions:this.flagActions(c,f) }, this.sevPill(f.severity))), aiFlagsEmpty:!flags.length,
       aiShowHandledBox:this.box(!!this.state.aiShowHandled), aiToggleHandled:()=>this.setState({aiShowHandled:!this.state.aiShowHandled}),
       aiReplyRows:replies.map(({c,m})=>Object.assign({ name:c.name||c.email, when:this.fmtDT(m.ts), subject:m.subject||'(no subject)', summary:m.summary||'', text:m.text||'',
@@ -2531,7 +2641,9 @@ class Component extends DCLogic {
       aiMsgs:(this.state.aiMsgs||[]).map(m=>({text:m.text,rowStyle:'display:flex;flex-direction:column;align-items:'+(m.role==='user'?'flex-end':'flex-start'),bubbleStyle:bubble(m.role),
         hasActions:!!(m.actions&&m.actions.length),actions:(m.actions||[]).map(a=>({label:a.label||a.op,onClick:()=>this.aiExec(a)}))})),
       aiEmpty:!(this.state.aiMsgs||[]).length, aiBusy:this.state.aiBusy, aiInput:this.state.aiInput||'', onAiInput:(e)=>this.setState({aiInput:e.target.value}),
-      onAiKey:(e)=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); this.aiSend(); } }, aiSendBtn:()=>this.aiSend(), aiSendDisabled:this.state.aiBusy||!url,
+      aiChatHint:aiOn?'Ask about this cohort — "Who are the strongest applicants so far?" · "How many offline vs online finalists?" · "Draft 5 interview questions for a 3rd-year."'
+        :(url?'The assistant needs an AI key in Code.gs. Everything else on this Desk works without one.':'The assistant needs the shared connection (Settings → Sync) and an AI key in Code.gs. Everything else on this Desk works without either.'),
+      onAiKey:(e)=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); this.aiSend(); } }, aiSendBtn:()=>this.aiSend(), aiSendDisabled:this.state.aiBusy||!aiOn,
       aiHasReports:reports.length>0, aiReportsEmpty:!reports.length,
       aiReports:reports.map(r=>({title:this.fmtDate(+new Date(r.day+'T12:00'))+(r.runs>1?(' · '+r.runs+' runs'):''),lines:(r.lines||[]).map(t=>({t})),onDelete:()=>this.delReports([r.id])})),
       clearReports:()=>this.ask('Clear all activity?','Removes every AI activity report for the whole team.',()=>this.delReports(reports.map(r=>r.id)),{danger:true,okLabel:'Clear all'}),
@@ -2548,13 +2660,13 @@ class Component extends DCLogic {
     const groups=[
       {title:'AI screening (up to shortlisting)',icon:'ph ph-sparkle',items:[
         T('aiFill','Fill blank details from the email and CV','Year, programme, college, city, phone, preferred mode… Never overwrites what someone typed.'),
-        T('aiScore','Score and recommend','The AI’s rubric score and Shortlist / Maybe / Not now, shown next to your own rating in the AI Desk.'),
+        T('aiScore','Score and recommend','The AI’s rubric score and Shortlist / Maybe / Not now, shown next to your own rating on the Review Desk.'),
         Object.assign(T('autoShortlist','Auto-shortlist clear cases','When the AI recommends shortlisting with a high score and nothing is flagged. Logged on the record; undo with "Back a stage". No email is sent.','no email'),
           {hasNum:true,numLabel:'Minimum AI score',num:a.autoShortlistMin||80,onNum:(e)=>this.setAuto('autoShortlistMin',Math.max(30,Math.min(100,parseInt(e.target.value,10)||80)))}),
         T('autoRejectIneligible','Mark clearly ineligible applications "not now"','For example a 1st-year student, when the AI is at least 80% sure. No email is sent; it shows as a flag you can reverse.','no email'),
         T('autoMissingDocs','Ask for a missing CV automatically','Sends the "missing documents" template once, if an application arrives without a CV.','emails candidates')]},
       {title:'Gmail',icon:'ph ph-envelope-simple',items:[
-        T('logReplies','Attach candidates’ replies and documents to their record','Replies appear in the AI Desk; interview confirmations are noted; NDAs and IDs sent by email are filed automatically.')]},
+        T('logReplies','Attach candidates’ replies and documents to their record','Replies appear on the Review Desk; interview confirmations are noted; NDAs and IDs sent by email are filed automatically.')]},
       {title:'Reminders',icon:'ph ph-bell-ringing',items:[
         T('ivReminders','Remind candidates the day before their interview','Sent at 9 AM using the "Interview reminder" template.','emails candidates'),
         T('ndaReminders','Remind joined interns about the signed NDA','3 days after the offer, then every 3 days, at most 3 times.','emails candidates'),
@@ -2695,7 +2807,7 @@ class Component extends DCLogic {
       ['applied','Applied','ph ph-tray','',by('applied')],['shortlisted','Shortlisted','ph ph-list-checks','',by('shortlisted')],['interviews','Interview','ph ph-calendar-dots','',by('interview')],
       ['approvals','Approvals','ph ph-seal-check','',apPend+extPend],['onboarding','Onboarding','ph ph-user-check','',act.filter(c=>c.stage==='final'&&this.approved(c)).length],
       ['running','Running Cohort','ph ph-users-three','In chambers',this.runningFor(id).length],['extensions','Extensions','ph ph-arrow-line-right','',extPend],
-      ['ai','AI Desk','ph ph-sparkle','Insights',this.aiFlagList(false).filter(x=>x.f.severity!=='info').length+this.aiReplyList(false).filter(x=>this.replyNeedsAction(x.m)).length],['analytics','Analytics','ph ph-chart-bar','',''],['timeline','Timeline & Reporting','ph ph-clock-countdown','',''],
+      ['ai','Review Desk','ph ph-sparkle','Insights',this.deskFlagList(false).filter(x=>x.f.severity!=='info').length+this.aiReplyList(false).filter(x=>this.replyNeedsAction(x.m)).length],['analytics','Analytics','ph ph-chart-bar','',''],['timeline','Timeline & Reporting','ph ph-clock-countdown','',''],
       ['playbook','Playbook','ph ph-book-open-text','Reference',''],['settings','Settings','ph ph-gear-six','','']];
     return items.map(it=>{ const on=this.state.page===it[0], c=it[4];
       return {label:it[1],icon:it[2],cnt:c?String(c):'',go:()=>this.go(it[0]),
@@ -2703,11 +2815,54 @@ class Component extends DCLogic {
         style:'display:flex;align-items:center;gap:10px;width:100%;padding:9px 12px;border-radius:9px;margin-bottom:1px;font-size:12.5px;font-weight:600;text-align:left;'+(on?'background:var(--acG);color:#fff;box-shadow:0 2px 8px rgba(45,212,191,.25)':'background:transparent;color:rgba(255,255,255,.66)'),
         cntStyle:c?('margin-left:auto;background:'+(on?'rgba(255,255,255,.2)':'rgba(255,255,255,.1)')+';padding:1px 7px;border-radius:20px;font-size:10px;font-weight:700'):'display:none'}; });
   }
+  /* ---- the one process, shown on every stage page so the tabs read as steps ---- */
+  RAIL=[['applied','Applied','ph ph-tray'],['shortlisted','Shortlisted','ph ph-list-checks'],['interviews','Interview','ph ph-calendar-dots'],
+        ['approvals','Approvals','ph ph-seal-check'],['onboarding','Onboarding','ph ph-user-check'],['running','In chambers','ph ph-users-three'],
+        ['extensions','Extensions','ph ph-arrow-line-right']];
+  RAIL_PAGES=['overview','pipeline','applied','shortlisted','interviews','approvals','onboarding','running','extensions'];
+  railCounts(){
+    const id=this.state.activeCohortId, act=this.active(this.cohCands());
+    const by=s=>act.filter(c=>c.stage===s).length;
+    const extPend=this.data.candidates.filter(c=>(c.extensions||[]).some(x=>x.status==='pending'&&(x.targetCohortId===id||x.fromCohortId===id))).length;
+    const run=this.runningFor(id), awaitSign=act.filter(c=>c.stage==='final'&&!this.approved(c)).length;
+    return { applied:by('applied'), shortlisted:by('shortlisted'), interviews:by('interview'), approvals:awaitSign+extPend,
+      onboarding:act.filter(c=>c.stage==='final'&&this.approved(c)).length, running:run.length,
+      extensions:run.filter(c=>!this.extOutOf(c,id)).length, awaitSign, extPend };
+  }
+  /** Which rail step the current screen belongs to. */
+  railCurrent(){
+    const p=this.state.page;
+    if(p==='pipeline') return ({applied:'applied',shortlisted:'shortlisted',interview:'interviews',final:'approvals',joined:'running'})[this.state.pipeTab]||'';
+    return this.RAIL.some(r=>r[0]===p)?p:'';
+  }
+  railVM(){
+    if(this.RAIL_PAGES.indexOf(this.state.page)<0||!this.cohort) return { showRail:false, rail:[], hasRailHint:false, railHint:'', railCta:'', railGo:()=>{} };
+    const n=this.railCounts(), cur=this.railCurrent(), act=this.active(this.cohCands()), today=this.todayStr();
+    const rail=this.RAIL.map((r,i)=>{ const on=cur===r[0], cnt=n[r[0]]||0;
+      return { label:r[1], icon:r[2], cnt:cnt?String(cnt):'', go:()=>this.go(r[0]),
+        title:({applied:'New applications to read and rate',shortlisted:'Through to interview — give them a slot next',interviews:'Scheduling, marks and the verdict',
+          approvals:'Mayank Sir’s sign-off on finalists, and extension requests',onboarding:'Approved finalists: send the offer, collect NDA and ID',
+          running:'Interns in chambers this month — counsel reviews',extensions:'Who continues into next month'})[r[0]],
+        style:(on?'background:var(--acG);color:#fff;box-shadow:0 2px 8px rgba(45,212,191,.25)':'color:var(--t2);background:transparent'),
+        arrowStyle:i===0?'display:none':'', cntStyle:cnt?('font-size:10px;font-weight:800;padding:1px 6px;border-radius:20px;background:'+(on?'rgba(255,255,255,.22)':'var(--sf2)')):'display:none' }; });
+    const noSlot=act.filter(c=>c.stage==='interview'&&!c.interview.date).length;
+    const unmarked=act.filter(c=>c.stage==='interview'&&c.interview.date&&c.interview.date<today&&!c.interview.result).length;
+    const H=[];
+    if(n.applied) H.push([n.applied+' new application(s) to read — rate them, then shortlist or set aside.','Open Applied',()=>this.go('applied')]);
+    if(n.shortlisted) H.push([n.shortlisted+' shortlisted candidate(s) are not at the interview stage yet.','Move to Interview',()=>this.go('shortlisted')]);
+    if(noSlot) H.push([noSlot+' candidate(s) at the interview stage still need a date and time.','Schedule them',()=>this.go('interviews',{ivTab:'toschedule'})]);
+    if(unmarked) H.push([unmarked+' interview(s) were held but have no verdict yet.','Mark them',()=>this.go('interviews',{ivTab:'overdue'})]);
+    if(n.awaitSign) H.push([n.awaitSign+' finalist(s) are waiting for Mayank Sir’s sign-off.','Open Approvals',()=>this.go('approvals',{apprTab:'pending'})]);
+    if(n.onboarding) H.push([n.onboarding+' approved finalist(s) have not been sent the offer.','Open Onboarding',()=>this.go('onboarding')]);
+    if(n.extPend) H.push([n.extPend+' extension request(s) are waiting for a decision.','Decide them',()=>this.go('approvals',{apprTab:'extensions'})]);
+    const h=H[0];
+    return { showRail:true, rail, hasRailHint:!!h, railHint:h?h[0]:'', railCta:h?h[1]:'', railGo:h?h[2]:(()=>{}) };
+  }
   pageMeta(){ const L=(this.cohort||{}).label||'—';
     return ({cohorts:['Cohorts','Every intake month — active and past'],overview:['Overview',L],pipeline:['Pipeline',L+' · the whole board'],applied:['Applied',L+' · new applications to review'],
       shortlisted:['Shortlisted',L+' · through to interview'],interviews:['Interview',L+' · scheduling & assessment'],approvals:['Approvals',L+' · sign-off & extension requests'],
       onboarding:['Onboarding',L+' · approved finalists, offers & paperwork'],running:['Running Cohort',L+' · interns in chambers this month'],extensions:['Extensions',L+' · who continues next month'],
-      analytics:['Analytics','Conversion, mix, extensions and trends'],ai:['AI Desk',L+' · what the AI read, flagged and suggests'],timeline:['Timeline & Reporting',L+' · deadlines, seats & joining details'],
+      analytics:['Analytics','Conversion, mix, extensions and trends'],ai:['Review Desk',L+' · applications to decide, things to check, and candidates’ replies'],timeline:['Timeline & Reporting',L+' · deadlines, seats & joining details'],
       playbook:['Playbook','Emails, WhatsApp, invitations and the Google scripts'],settings:['Settings','Sync, team, lists and data']})[this.state.page]||['',''];
   }
   shellVM(){
@@ -2743,7 +2898,7 @@ class Component extends DCLogic {
     if(this._saveErr) B('b-err','ph ph-floppy-disk','Not saved on this device.',this._saveErr);
     if(navigator.onLine===false) B('b-warn','ph ph-wifi-slash','Offline.','Changes are kept on this device and upload when the connection is back.');
     if(err&&this.apiUrl()&&this.state.page!=='settings') B('b-err','ph ph-warning-circle','Sync problem:',err.message+'. Your changes are safe on this device.','Fix',()=>this.go('settings',{setTab:'sync'}));
-    if(this.apiUrl()&&this.serverVersion&&this.serverVersion!=='v23') B('b-warn','ph ph-arrow-circle-up','The Google script is an older version ('+this.serverVersion+').','Update it from Playbook → Apps Script (four files), then deploy a New version.','Open',()=>this.go('playbook',{pbTab:'script'}));
+    if(this.apiUrl()&&this.serverVersion&&this.serverVersion!=='v24') B('b-warn','ph ph-arrow-circle-up','The Google script is an older version ('+this.serverVersion+').','Update it from Playbook → Apps Script (four files), then deploy a New version.','Open',()=>this.go('playbook',{pbTab:'script'}));
     if(!this.actingAs&&(this.S('team')||[]).length) B('b-info','ph ph-user-circle','Who are you?','Choose your name under "Acting as" (bottom of the menu) so your actions are attributed and approvals work.','Choose',()=>this.setState({navOpen:true}));
     if(!this.apiUrl()&&st.cohorts.some(c=>!c.demo)&&this.state.page!=='settings') B('b-warn','ph ph-plugs','This device is not connected.','Nothing here is shared with the team until you connect it in Settings → Sync.','Connect',()=>this.go('settings',{setTab:'sync'}));
     if(st.cohorts.some(c=>c.demo)&&this.state.page!=='settings') B('b-info','ph ph-flask','Sample data is showing.','It lives on this device only and is never shared.','Remove',()=>this.clearDemo());
@@ -2807,8 +2962,8 @@ class Component extends DCLogic {
     const k7=this.data.candidates.filter(c=>(c.extensions||[]).some(x=>x.status==='pending'&&(x.targetCohortId===id||x.fromCohortId===id))).length; if(k7) A('EXTEND','var(--ac2)',k7+' extension request(s) awaiting a decision','Approvals',()=>this.go('approvals',{apprTab:'extensions'}));
     const k8=cc.filter(c=>{ const l=(c.mails||[]).slice(-1)[0]; return l&&!l.ok; }).length; if(k8) A('EMAIL','var(--dn)',k8+' email(s) failed to send','See them',()=>this.go('pipeline',{pipeTab:'all',chips:[{k:'mail',v:'failed'}]}));
     const k9=cc.filter(c=>c.ai&&(c.ai.type==='automated')).length; if(k9) A('CHECK','var(--mu)',k9+' record(s) the AI thinks are not applications','Check',()=>this.go('pipeline',{pipeTab:'all',chips:[{k:'flag',v:'check'}]}));
-    const k10=this.active(cc).filter(c=>c.stage==='applied'&&c.aiSuggest&&c.aiSuggest.recommendation).length; if(k10) A('AI','var(--ac)',k10+' application(s) read by the AI and waiting for your decision','AI Desk',()=>this.go('ai',{aiTab:'review'}));
-    const k11=this.aiFlagList(false).filter(x=>x.f.severity!=='info').length; if(k11) A('FLAG','var(--wn)',k11+' flag(s) need a person','Flags',()=>this.go('ai',{aiTab:'flags'}));
+    const k10=this.active(cc).filter(c=>c.stage==='applied'&&c.aiSuggest&&c.aiSuggest.recommendation).length; if(k10) A('AI','var(--ac)',k10+' application(s) read by the AI and waiting for your decision','Review Desk',()=>this.go('ai',{aiTab:'review'}));
+    const k11=this.deskFlagList(false).filter(x=>x.f.severity!=='info').length; if(k11) A('FLAG','var(--wn)',k11+' thing(s) on the Review Desk need a person','Flags',()=>this.go('ai',{aiTab:'flags'}));
     const k12=this.aiReplyList(false).filter(x=>this.replyNeedsAction(x.m)).length; if(k12) A('REPLY','var(--ac2)',k12+' candidate email(s) to answer','Replies',()=>this.go('ai',{aiTab:'replies'}));
     if(!coh) A('SETUP','var(--mu)','No cohort selected','Cohorts',()=>this.go('cohorts'));
     return { pageOverview:true, kpis, funnel, funnelSub:n+' applicant(s) in '+(coh?coh.label:'this cohort'), deadlines, activeCohortLabel:coh?coh.label:'—', attention:attn, noAttention:!attn.length };
@@ -2889,8 +3044,18 @@ class Component extends DCLogic {
     if(action==='clearslot'){ const t=this.now(); list.forEach(c=>{ this.C.applyChange(c,'interview.date','',t); this.C.applyChange(c,'interview.slot','',t); this.log(c,'Interview slot cleared (bulk)'); }); this.setState({ivSel:[]}); this.changed('Slots cleared for '+n); return; }
     if(action==='export'){ this.exportExcel(list,'Cohort_interview_schedule'); this.setState({ivSel:[]}); }
   }
+  /** Shortlisted → Interview in one step: the only way anyone reaches the scheduling table. */
+  moveShortlistedToInterview(){
+    const list=this.active(this.cohCands()).filter(c=>c.stage==='shortlisted');
+    if(!list.length){ this.flash('Nobody is shortlisted in this cohort'); return; }
+    this.ask('Move '+list.length+' shortlisted candidate(s) to Interview?','They appear under "To schedule" so you can give them a date and time. No email is sent now — the interview-call email is a separate step.',()=>{
+      const t=this.now(); list.forEach(c=>{ this.C.applyChange(c,'stage','interview',t); this.log(c,'Moved to Interview'); this.markDirty('candidates',c.id); });
+      this.setState({ivTab:'toschedule'}); this.changed('Moved '+list.length+' to Interview','ok');
+    },{okLabel:'Move '+list.length});
+  }
   interviewsVM(){
     const tab=this.IV_TABS.some(t=>t[0]===this.state.ivTab)?this.state.ivTab:'toschedule', list=this.ivSorted(tab), sel=new Set(this.state.ivSel||[]);
+    const waiting=this.active(this.cohCands()).filter(c=>c.stage==='shortlisted').length;
     const ivRows=list.map(c=>{ const on=sel.has(c.id), m=this.ivScore(c), sent=this.lastMail(c,'p2_accept'), ready=!!(c.interview.date&&c.interview.slot&&c.email);
       return Object.assign({ name:c.name||'(unnamed)', sub:this.trackName(c.track)+' · '+this.yearBand(c)+(c.college?(' · '+c.college):''),
         onOpen:()=>this.openCand(c.id), onToggle:(e)=>{ this.stop(e); const s=new Set(this.state.ivSel||[]); s.has(c.id)?s.delete(c.id):s.add(c.id); this.setState({ivSel:[...s]}); },
@@ -2904,6 +3069,7 @@ class Component extends DCLogic {
         emailTitle:!ready?'Needs a date, a time and an email address':(sent?('Sent '+this.fmtDT(sent.ts)+' — click to send again'):'Email the slot to the candidate (preview first)') }, this.modeCell(c)); });
     const ids=list.map(c=>c.id), allSel=ids.length&&ids.every(i=>sel.has(i)), nSel=(this.state.ivSel||[]).length;
     return { pageInterviews:true,
+      ivHasNext:waiting>0, ivNextText:waiting+' shortlisted candidate(s) are not at the interview stage yet, so they do not appear below.', ivNext:()=>this.moveShortlistedToInterview(),
       ivTabs:this.tab(this.IV_TABS,tab,v=>this.setState({ivTab:v,ivSel:[]}),v=>this.ivList(v).length),
       ivRows, ivEmpty:!ivRows.length,
       ivEmptyMsg:{toschedule:'Nobody is waiting for a slot. Move candidates to the Interview stage from the Pipeline.',upcoming:'No interviews scheduled from today onward.',overdue:'No held interviews are waiting to be marked.',done:'No interviews marked yet.'}[tab],
@@ -2967,19 +3133,31 @@ class Component extends DCLogic {
     const fin=this.active(cc).filter(c=>c.stage==='final'), seat=this.seatStats(id), t=coh.targets||{};
     const stat=(v,l,tone)=>({value:v,label:l,valStyle:'font-size:24px;font-weight:800;font-family:var(--fd);color:'+tone});
     const list=isExt?apExtRows:apRows;
+    const allExt=this.apList('extensions');
+    const extStats=[stat(allExt.filter(o=>o.x.status==='pending').length,'Requests awaiting sign-off','var(--wn)'),
+      stat(allExt.filter(o=>o.x.status==='approved').length,'Approved','var(--ok)'),
+      stat(allExt.filter(o=>o.x.status==='declined').length,'Declined','var(--dn)'),
+      stat(allExt.filter(o=>o.x.status==='approved'&&o.x.stipend==='yes').length,'With a stipend','var(--wn)'),
+      stat(allExt.filter(o=>o.x.bypass).length,'Bypassed','var(--wn)')];
+    const selStats=[stat(fin.filter(c=>!this.approved(c)).length,'Awaiting sign-off','var(--tx)'),stat(fin.filter(c=>this.approved(c)).length,'Approved, offer not sent','var(--ac)'),
+      stat((seat.offline)+' / '+(t.offline||0),'Offline seats filled','var(--ac)'),stat(seat.online+' / '+(t.online||0),'Online seats filled','var(--ac2)'),
+      stat(this.active(cc).filter(c=>c.appr.bypass).length,'Bypassed','var(--wn)')];
+    const readyToOffer=fin.filter(c=>this.approved(c)).length;
     return { pageApprovals:true, apShowExt:isExt, apShowSelection:!isExt,
+      apHasNext:!isExt&&readyToOffer>0, apNextText:readyToOffer+' approved finalist(s) are ready for the offer email.', apNext:()=>this.go('onboarding'),
       apprTabs:this.tab([['pending','Pending'],['approved','Approved'],['rejected','Rejected'],['extensions','Extensions']],tab,v=>this.setState({apprTab:v}),v=>v==='extensions'?this.apList(v).filter(o=>o.x.status==='pending').length:this.apList(v).length),
       apRows, apExtRows, apEmpty:!list.length,
       apCols:[this.tsortHdr('approvals','name','Finalist'),this.tsortHdr('approvals','track','Track'),this.tsortHdr('approvals','mode','Mode'),this.tsortHdr('approvals','score','App','right'),this.tsortHdr('approvals','iv','Intvw','right')],
       apExtCols:[this.tsortHdr('apext','name','Intern'),this.tsortHdr('apext','mode','Mode'),this.tsortHdr('apext','review','Review','right')],
       apStatusCol:this.tsortHdr('approvals','status','Status'),
       apEmptyMsg:{pending:'No finalists awaiting sign-off.',approved:'No approved finalists yet.',rejected:'No one rejected after interview.',extensions:'No extension requests into or out of '+(coh.label||'this month')+'. Raise them from the Extensions tab.'}[tab],
-      apStats:[stat(fin.filter(c=>!this.approved(c)).length,'Awaiting sign-off','var(--tx)'),stat(fin.filter(c=>this.approved(c)).length,'Approved, offer not sent','var(--ac)'),
-        stat((seat.offline)+' / '+(t.offline||0),'Offline seats filled','var(--ac)'),stat(seat.online+' / '+(t.online||0),'Online seats filled','var(--ac2)'),
-        stat(this.active(cc).filter(c=>c.appr.bypass).length+this.apList('extensions').filter(o=>o.x.bypass).length,'Bypassed','var(--wn)')],
-      apIntro:isExt?('Extension requests out of or into '+(coh.label||'this month')+'.'):('Sign-off for '+(coh.label||'this cohort')+'. Open a record for interview notes and approval notes. Mayank Sir’s approval (or a recorded bypass) confirms; Bharat Sir’s is optional. Star anyone as a potential Associate.'),
+      apStats:isExt?extStats:selStats,
+      apIntro:isExt?('Extension requests out of or into '+(coh.label||'this month')+'. Requests are raised in the Extensions tab; Mayank Sir signs off here (or record a bypass with a reason). On approval the intern appears in the target month’s Running Cohort.')
+        :('Sign-off for '+(coh.label||'this cohort')+'. Open a record for interview notes and approval notes. Mayank Sir’s approval (or a recorded bypass) confirms; Bharat Sir’s is optional. Star anyone as a potential Associate. Approved finalists then move to Onboarding for the offer.'),
       apBypassAll:()=>this.bypass('all'),
-      apExport:()=>{ const l=this.active(cc).filter(c=>c.stage==='joined'||(c.stage==='final'&&this.approved(c))); this.exportPDF(l.length?l:fin,'Cohort_final_list_'+(coh.label||''),'Final list - '+(coh.label||'')); } };
+      apExportLabel:isExt?'Export requests':'Final list',
+      apExport:()=>{ if(isExt){ this.exportExcel(this.apList('extensions').map(o=>o.c),'Cohort_extension_requests_'+(coh.label||'')); return; }
+        const l=this.active(cc).filter(c=>c.stage==='joined'||(c.stage==='final'&&this.approved(c))); this.exportPDF(l.length?l:fin,'Cohort_final_list_'+(coh.label||''),'Final list - '+(coh.label||'')); } };
   }
   sendOffer(c){
     if(!this.approved(c)){ this.flash('Needs Mayank Sir’s approval or a recorded bypass first','warn'); return; }
@@ -2996,13 +3174,30 @@ class Component extends DCLogic {
     const obRows=list.map(c=>{ const nb=ndaMap[c.nda.status]||ndaMap.pending, joined=c.stage==='joined';
       return Object.assign({ name:c.name||'(unnamed)', sub:this.trackName(c.track)+' · '+this.yearBand(c)+(c.college?(' · '+c.college):''), onOpen:()=>this.openCand(c.id,'decision'),
         ndaLabel:nb[0], ndaStyle:this.apprBtn(c.nda.status!=='pending',nb[1]), onNda:()=>this.cycleNda(c.id),
-        canOffer:!joined, onOffer:()=>this.sendOffer(c), offerSent:joined, offerLabel:'Sent '+this.fmtDate(c.onboard.offerSentAt||((this.lastMail(c,'offer')||{}).ts)),
+        canOffer:!joined, onOffer:()=>this.sendOffer(c), offerSent:joined,
+        offerLabel:(()=>{ const ts=c.onboard.offerSentAt||((this.lastMail(c,'offer')||{}).ts)||0; return ts?('Sent '+this.fmtDate(ts)):'Joined (no offer email on record)'; })(),
         offerStyle:this.pill('var(--okL)','var(--ok)'), idLabel:c.govtIdUrl?'Received':'Awaited', idStyle:c.govtIdUrl?this.pill('var(--okL)','var(--ok)'):this.pill('var(--wnL)','var(--wn)'),
         stipLabel:c.stip.grant?'Stipend ✓':'Grant stipend', stipStyle:this.apprBtn(c.stip.grant,'var(--wn)'), onStipend:()=>this.toggleStipend(c.id),
         seatLabel:c.track==='associate'?'Associate':(c.stip.grant?'Reserved seat':(this.effMode(c)==='online'?'Online seat':'Offline seat')),
         seatStyle:c.stip.grant?this.pill('var(--wnL)','var(--wn)'):this.pill('var(--sf2)','var(--t2)') }, this.modeCell(c)); });
     const seat=this.seatStats(id), t=coh.targets||{}, stat=(v,l,tone)=>({value:v,label:l,valStyle:'font-size:24px;font-weight:800;font-family:var(--fd);color:'+tone});
+    // Everything the offer email needs, gathered in one place (it is otherwise spread over three tabs).
+    const ob=coh.onboard||{}, of=this.S('offerFiles')||{};
+    const chk=(ok,label,detail,cta,go)=>({ok,label,detail,cta:cta||'',go:go||(()=>{}),hasCta:!!cta,
+      icon:ok?'ph-fill ph-check-circle':'ph-fill ph-warning-circle',iconStyle:'font-size:15px;flex-shrink:0;margin-top:2px;color:'+(ok?'var(--ok)':'var(--wn)')});
+    const toPlaybook=()=>this.go('playbook',{pbTab:'templates'}), toTimeline=()=>this.go('timeline');
+    const ready=[
+      chk(!!of.handbook,'CBC Handbook attachment',of.handbook?'Drive link set':'No Drive link yet — the offer will not send without it.','Playbook',toPlaybook),
+      chk(!!of.nda,'Blank NDA attachment',of.nda?'Drive link set':'No Drive link yet — the offer will not send without it.','Playbook',toPlaybook),
+      chk(!!(ob.whatsapp||'').trim(),'WhatsApp group link',(ob.whatsapp||'').trim()?'Set for '+(coh.label||'this cohort'):'Add it in the box below — it goes into the offer email.'),
+      chk(!!(ob.reporting||this.S('reportingDetails')||'').trim(),'Reporting details',(ob.reporting||'').trim()?'Set for this cohort':((this.S('reportingDetails')||'').trim()?'Using the Chambers default':'Nothing set — the offer email will have a blank reporting line.'),'Timeline',toTimeline),
+      chk(!!ob.startDate,'Start date & duration',ob.startDate?(this.fmtDate(ob.startDate)+' · '+(ob.duration||'a minimum of four weeks')):'Not set.','Timeline',toTimeline)];
+    const notReady=ready.filter(r=>!r.ok).length;
+    const joinedCount=list.filter(c=>c.stage==='joined').length;
     return { pageOnboarding:true, obRows, obEmpty:!obRows.length,
+      obReady:ready, obReadyNote:notReady?(notReady+' of 5 items still to set before the offer goes out.'):'Everything the offer email needs is in place.',
+      obReadyStyle:'display:inline-block;padding:3px 9px;border-radius:7px;font-size:11px;font-weight:700;'+(notReady?'background:var(--wnL);color:var(--wn)':'background:var(--okL);color:var(--ok)'),
+      obHasNext:joinedCount>0, obNextText:joinedCount+' intern(s) have their offer and are in the Running Cohort for '+(coh.label||'this month')+'.', obNext:()=>this.go('running'),
       obWaMonth:coh.label||'This cohort', obWaLink:(coh.onboard&&coh.onboard.whatsapp)||'', onObWaLink:(e)=>this.setCoh(this.cohort,'onboard.whatsapp',e.target.value.trim()),
       obCols:[this.tsortHdr('onboarding','name','Candidate'),this.tsortHdr('onboarding','mode','Mode'),this.tsortHdr('onboarding','nda','NDA')],
       obStats:[stat(list.filter(c=>c.stage!=='joined').length,'Ready for the offer','var(--ac)'),stat(list.filter(c=>c.stage==='joined').length,'Offer sent (joined)','var(--ok)'),
@@ -3022,7 +3217,7 @@ class Component extends DCLogic {
       return Object.assign({ name:c.name||'(unnamed)', sub:this.yearBand(c)+(c.college?(' · '+c.college):''), onOpen:()=>this.openCand(c.id,'reviews'),
         badge:carried?('Carried over from '+((this.coh(inX.fromCohortId)||{}).label||'earlier')):'', badgeStyle:carried?('display:inline-block;margin-top:3px;'+this.pill('var(--wnL)','var(--wn)')):'display:none',
         onToggle:(e)=>{ this.stop(e); const s=new Set(this.state.runSel||[]); s.has(c.id)?s.delete(c.id):s.add(c.id); this.setState({runSel:[...s]}); }, checkStyle:this.box(on), checkMark:on?'✓':'',
-        rowTint:extd?(out.stipend==='yes'?'background:var(--wnL)':'background:var(--acL)'):'',
+        rowTint:stipOn?'background:var(--wnL)':(extd?'background:var(--acL)':''),
         reviewLabel:req?(revs.length+' / '+req+' in'):(revs.length?(revs.length+' in'):'not requested'), reviewStyle:this.pill(req&&!pend?'var(--okL)':'var(--sf2)',req&&!pend?'var(--ok)':'var(--t2)'),
         reviewSub:req?(pend?(pend+' pending'):'all in'):'',
         extLabel:out?({approved:'Extended → '+out.targetLabel,pending:'Requested → '+out.targetLabel,declined:'Declined'})[out.status]||'—':'—',
@@ -3033,9 +3228,11 @@ class Component extends DCLogic {
     const ids=list.map(c=>c.id), allSel=ids.length&&ids.every(i=>sel.has(i)), nSel=(this.state.runSel||[]).length;
     const stat=(v,l,tone)=>({value:v,label:l,valStyle:'font-size:24px;font-weight:800;font-family:var(--fd);color:'+tone});
     const cs=this.counsels();
+    const undecided=list.filter(c=>!this.extOutOf(c,id)).length;
     return { pageRunning:true, runRows, runEmpty:!runRows.length,
+      runHasNext:undecided>0, runNextText:undecided+' intern(s) in '+(round||'this month')+' have no extension decision yet.', runNext:()=>this.go('extensions'),
       runStats:[stat(list.length,'In chambers','var(--tx)'),stat(list.filter(c=>this.carriedIn(c,id)).length,'Carried over (extended in)','var(--wn)'),
-        stat(list.filter(c=>this.reviewsFor(c,round).length).length,'Reviewed this month','var(--ac)'),stat(list.filter(c=>{ const x=this.extOutOf(c,id); return x&&x.status==='approved'; }).length,'Extended to next month','var(--ac2)')],
+        stat(list.filter(c=>this.reviewsFor(c,round).length).length,'Reviewed for '+(round||'this month'),'var(--ac)'),stat(list.filter(c=>{ const x=this.extOutOf(c,id); return x&&x.status==='approved'; }).length,'Extended to next month','var(--ac2)')],
       runCols:[this.tsortHdr('running','name','Intern'),this.tsortHdr('running','mode','Mode'),this.tsortHdr('running','reviews','Reviews'),this.tsortHdr('running','ext','Extension'),this.tsortHdr('running','stipend','Stipend')],
       runToggleAll:()=>this.setState({runSel:allSel?[]:ids}), runSelAllStyle:this.box(allSel), runSelAllMark:allSel?'✓':'',
       runSendReview:()=>this.sendReviewRequest(nSel?this.state.runSel:ids), runSendLabel:nSel?('Send review request ('+nSel+' selected)'):('Send review request (all '+ids.length+')'),
@@ -3060,12 +3257,19 @@ class Component extends DCLogic {
         reqStyle:this.apprBtn(!!x&&dec!=='declined',dec==='pending'?'var(--wn)':'var(--ac)'),
         onReq:()=>{ if(!x||dec==='declined') this.raiseExtension(c,chosen); else if(dec==='pending') this.withdrawExt(c,x); },
         stipLabel:dec==='approved'?(x.stipend==='yes'?('₹'+Number(x.amount||11000).toLocaleString('en-IN')):(x.stipend==='no'?'No stipend':'Set in Approvals')):'—' }, this.modeCell(c)); });
-    const all=[]; this.data.candidates.forEach(c=>(c.extensions||[]).forEach(x=>{ if(x.fromCohortId===id&&x.status!=='withdrawn') all.push(x); }));
+    const all=[], into=[];
+    this.data.candidates.forEach(c=>(c.extensions||[]).forEach(x=>{ if(x.status==='withdrawn') return;
+      if(x.fromCohortId===id) all.push(x); if(x.targetCohortId===id&&x.status==='approved') into.push(x); }));
     const stat=(v,l,tone)=>({value:v,label:l,valStyle:'font-size:24px;font-weight:800;font-family:var(--fd);color:'+tone});
+    const pend=all.filter(x=>x.status==='pending').length;
+    const L=coh.label||'this month';
     return { pageExtensions:true, extRows, extEmpty:!extRows.length,
-      extStats:[stat(all.filter(x=>x.status==='pending').length,'Awaiting sign-off','var(--wn)'),stat(all.filter(x=>x.status==='approved').length,'Approved','var(--ok)'),stat(all.filter(x=>x.status==='declined').length,'Declined','var(--dn)'),stat(all.filter(x=>x.status==='approved'&&x.stipend==='yes').length,'With stipend','var(--wn)')],
+      extStats:[stat(pend,'Requested, awaiting sign-off','var(--wn)'),stat(all.filter(x=>x.status==='approved').length,'Approved out of '+L,'var(--ok)'),
+        stat(all.filter(x=>x.status==='declined').length,'Declined','var(--dn)'),stat(all.filter(x=>x.status==='approved'&&x.stipend==='yes').length,'With a stipend','var(--wn)'),
+        stat(into.length,'Carried into '+L,'var(--ac2)')],
+      extHasNext:pend>0, extNextText:pend+' request(s) out of '+L+' are waiting for Mayank Sir’s sign-off.', extNext:()=>this.go('approvals',{apprTab:'extensions'}),
       extCols:[this.tsortHdr('extensions','name','Intern'),this.tsortHdr('extensions','mode','Mode'),this.tsortHdr('extensions','reviews','Reviews'),this.tsortHdr('extensions','review','Review score','right'),this.tsortHdr('extensions','decision','Decision')],
-      extIntro:'Everyone interning in '+(coh.label||'this month')+' (including interns carried over from earlier months). Choose the month to extend into and raise a request — you can do it before every counsel has reviewed.',
+      extIntro:'Everyone interning in '+L+' (including interns carried over from earlier months). Choose the month to extend into and raise a request — you can do it before every counsel has reviewed. The counts above are extensions OUT of '+L+', plus the interns carried into it.',
       extExport:()=>this.exportExcel(list,'Cohort_extensions_'+(coh.label||'')) };
   }
   analyticsVM(){
@@ -3139,13 +3343,13 @@ class Component extends DCLogic {
   playbookVM(){
     const pb=this.state.pbTab||'templates', R=this.R;
     if(pb==='script'&&!this.state.scripts&&!this._loadingScripts){ this._loadingScripts=true; R.loadScripts().then(s=>{ this._loadingScripts=false; this.setState({scripts:s}); }); }
-    const tagTone={ACK:'var(--t2)','PHASE 2':'var(--ac2)','PHASE 3':'var(--ac)',OFFER:'var(--ok)',NDA:'var(--wn)','PHASE 5':'var(--pu)',DEFECTS:'var(--mu)'};
+    const tagTone={APPLIED:'var(--t2)',SHORTLISTED:'var(--ac2)',INTERVIEW:'var(--ac)',ONBOARDING:'var(--ok)',EXTENSION:'var(--pu)',DEFECTS:'var(--mu)'};
     const seg=this.state.pbSeg||(this.state.trackScope==='associate'?'associate':'intern'), segOf=k=>({needsfix_associate:'associate',needsfix_internship:'intern'})[k]||'both';
     const items=this.templates().filter(t=>segOf(t.key)==='both'||segOf(t.key)===seg).map(t=>({tag:t.tag,name:t.name,when:t.when,subject:t.subject,body:t.body,group:t.group||'Other',isOffer:t.key==='offer',
       tagStyle:this.pill('var(--sf2)',tagTone[t.tag]||'var(--t2)'),onSubject:(e)=>this.editTemplate(t.key,'subject',e.target.value),onBody:(e)=>this.editTemplate(t.key,'body',e.target.value),
       onReset:()=>this.ask('Reset "'+t.name+'"?','Back to the original wording.',()=>{ const d=(R.DEFAULT_TEMPLATES||[]).find(x=>x.key===t.key); if(d) this.setS('emailTemplates',this.templates().map(x=>x.key===t.key?Object.assign({},d):x),'Template reset'); },{okLabel:'Reset'}),
       onCopy:()=>{ this.copyTxt('Subject: '+t.subject+'\n\n'+t.body); this.flash('Copied'); }}));
-    const order=['Acknowledgement','Phase 2 · Shortlisting','Phase 3 · Interview','Phase 4 · Offer & joining','Phase 5 · Onboarding','Defects / auto-replies','Other'];
+    const order=['Applied · acknowledgement','Shortlisted','Interview','Onboarding · the offer','Onboarding · paperwork','Extensions','Defects / auto-replies','Other'];
     const of=this.S('offerFiles')||{};
     const wa=this.S('whatsappMsgs')||this.defaultWhatsapp();
     const inv=[{tag:'INTERNSHIP',name:'Invitation for applications',desc:'Post from the Chambers’ pages when applications run short.',tagStyle:this.pill('var(--acL)','var(--ac)'),key:'inviteText',def:R.DEFAULT_INVITE},
@@ -3192,6 +3396,7 @@ class Component extends DCLogic {
     const counsels=this.S('counsels')||[];
     const setCounsels=l=>this.setS('counsels',l);
     const lastTxt=st.lastSync?('Last synced '+new Date(st.lastSync).toLocaleString('en-IN')):'Never synced';
+    const errText=err?['Time: '+err.time,'After: '+err.ms+' ms','Problem: '+err.message,err.detail?('Google said: '+err.detail):'','What to do: '+err.hint].filter(Boolean).join('\n'):'';
     let storage='Everything is kept on this device ('+(this._idbBroken?'basic browser storage':'IndexedDB')+') and, when connected, in the shared Google data.';
     return Object.assign(this.autoVM(), { pageSettings:true,
       setTabs:[['sync','Sync & data'],['auto','Automation'],['team','Team & counsels'],['chambers','Chambers & email safety']].map(t=>({label:t[1],go:()=>this.setState({setTab:t[0]}),style:this.segStyle(tab===t[0])})),
@@ -3208,8 +3413,8 @@ class Component extends DCLogic {
       autoSyncStyle:this.box(cn.autoSync),
       hasDiag:!!diag, diagRows:((diag&&diag.rows)||[]).map(r=>({label:r.label,detail:r.detail,icon:r.ok?'ph-fill ph-check-circle':'ph-fill ph-x-circle',iconStyle:'font-size:15px;flex-shrink:0;color:'+(r.ok?'var(--ok)':'var(--dn)')})),
       diagAdvice:(diag&&diag.advice)||'', diagOpenUrl:(diag&&diag.url)||((cn.endpoint||'')+'?action=ping'),
-      hasSyncError:!!err, syncErrorText:err?['Time: '+err.time,'After: '+err.ms+' ms','Problem: '+err.message,err.detail?('Google said: '+err.detail):'','What to do: '+err.hint].filter(Boolean).join('\n'):'',
-      copySyncError:()=>{ this.copyTxt(this.settingsVM().syncErrorText); this.flash('Copied'); }, clearSyncError:()=>{ st.lastSyncError=null; this.persistSoon(); this.setState({rev:this.state.rev+1}); },
+      hasSyncError:!!err, syncErrorText:errText,
+      copySyncError:()=>{ this.copyTxt(errText); this.flash('Copied'); }, clearSyncError:()=>{ st.lastSyncError=null; this.persistSoon(); this.setState({rev:this.state.rev+1}); },
       lastSyncLabel:lastTxt+(this.hasDirty()?' · changes waiting to upload':''), doSyncNow:()=>this.syncNow(false), copyInviteLink:()=>this.copyInviteLink(),
       driveUser:this._driveUser||'', onDriveUser:(e)=>{ this._driveUser=e.target.value.trim(); try{ localStorage.setItem('cohort_drive_user',this._driveUser); }catch(x){} this.setState({rev:this.state.rev+1}); },
       repairFiles:()=>this.repairFiles(), repairBusy:this.state.repairBusy, repairLabel:this.state.repairBusy?'Checking…':'Check & repair all files',
@@ -3238,11 +3443,22 @@ class Component extends DCLogic {
       style:'padding:11px 12px;font-size:12.5px;font-weight:700;white-space:nowrap;border-bottom:2px solid '+(tab===t[0]?'var(--ac)':'transparent')+';color:'+(tab===t[0]?'var(--ac)':'var(--t2)')}));
     const F=(field)=>(e)=>this.set(c,field,e.target.value);
     const checks=this.state.fileChecks||{};
-    const mkDoc=(label,field,slot)=>{ const u=c[field]||'', ck=u?checks[u]:null;
-      const st=ck?({ok:['✓ in Drive','var(--ok)'],trashed:['in the Drive trash','var(--wn)'],missing:['not found / no access','var(--dn)'],'bad-link':['not a Drive link','var(--dn)']})[ck.status]:null;
-      return {label,url:u,href:this.fileHref(u),onInput:F(field),canUpload:!!slot,onUpload:()=>this.uploadDoc(c.id,slot),canRestore:!!(ck&&ck.status==='trashed'),onRestore:()=>this.restoreFile(u),
-        status:st?('· '+st[0]):'',statusStyle:st?('text-transform:none;letter-spacing:0;font-weight:700;color:'+st[1]):'display:none',
-        openStyle:u&&/^https:\/\//.test(u)?'':'opacity:.35;pointer-events:none'}; };
+    const fileState=(u)=>{ const ck=u?checks[u]:null;
+      return ck?({ok:['✓ in Drive','var(--ok)'],trashed:['in the Drive trash','var(--wn)'],missing:['not found / no access','var(--dn)'],'bad-link':['not a Drive link','var(--dn)']})[ck.status]:null; };
+    const docRow=(label,url,o)=>{ const st=fileState(url), ck=url?checks[url]:null;
+      return Object.assign({label,url:url||'',href:this.fileHref(url),canUpload:false,canRestore:!!(ck&&ck.status==='trashed'),onRestore:()=>this.restoreFile(url),
+        canRemove:false,onRemove:()=>{},status:st?('· '+st[0]):'',statusStyle:st?('text-transform:none;letter-spacing:0;font-weight:700;color:'+st[1]):'display:none',
+        openStyle:url&&/^https:\/\//.test(url)?'':'opacity:.35;pointer-events:none'},o||{}); };
+    const mkDoc=(label,field,slot)=>docRow(label,c[field]||'',{onInput:F(field),canUpload:!!slot,onUpload:()=>this.uploadDoc(c.id,slot)});
+    // "Other attachments" is a single field holding several links — show one row per link so each one opens.
+    const others=String(c.otherUrl||'').split(' , ').map(s=>s.trim()).filter(Boolean);
+    const setOthers=(list)=>this.set(c,'otherUrl',list.filter(Boolean).join(' , '));
+    const otherRows=others.map((u,i)=>docRow('Other attachment '+(i+1)+' of '+others.length,u,{
+      onInput:(e)=>{ const l=others.slice(); l[i]=e.target.value.trim(); setOthers(l); },
+      canRemove:true, onRemove:()=>setOthers(others.filter((x,j)=>j!==i)) }));
+    otherRows.push(docRow(others.length?'Add another attachment':'Other attachment(s)','',{
+      onInput:(e)=>{ const v=e.target.value.trim(); if(v) setOthers(others.concat([v])); },
+      canUpload:true, onUpload:()=>this.uploadDoc(c.id,'other') }));
     const rubric=[['ind','Individuality','Sounds like a real person, not a template'],['story','Storytelling','A situation shown, not adjectives'],['pass','Passion for law','Genuine engagement with the subject'],['show','Show, don’t tell','Evidence over claims'],['orig','Original thought','An idea, a disagreement, a question']];
     const ivDims=[['legal','Legal reasoning','Can they think through a proposition?'],['clarity','Clarity of expression','Says the hard thing simply'],['curiosity','Curiosity','Reads, asks, follows things up'],['fit','Fit for the Chambers','Suited to how the work actually runs'],['integrity','Candour','Honest about what they don’t know']];
     const avg=this.reviewAvg(c), iva=this.ivAvg(c), sd=this.scoreDisp(c), fb=on=>'display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:6px;flex-shrink:0;border:1.5px solid '+(on?'var(--ac)':'var(--bdL)')+';background:'+(on?'var(--ac)':'transparent')+';color:var(--bg)';
@@ -3305,7 +3521,8 @@ class Component extends DCLogic {
         pqe:c.pqe, onPqe:F('pqe'), barEnrol:c.barEnrol, onBarEnrol:F('barEnrol'), gradLabel:isA?'Year of graduation':'Batch · graduating year', gradYear:c.gradYear, onGradYear:F('gradYear'),
         currentRole:c.currentRole, onCurrentRole:F('currentRole'), college:c.college, onCollege:F('college'), city:c.city, onCity:F('city'), source:c.source, onSource:F('source'),
         showRef:c.source==='Reference'||!!c.referredBy, referredBy:c.referredBy, onRef:F('referredBy'), notes:c.notes, onNotes:F('notes'),
-        docs:[mkDoc('CV / Résumé','cvUrl','cv'),mkDoc('Cover letter','clUrl','cover'),mkDoc('Email as PDF (saved by the intake)','emailPdfUrl',''),mkDoc('Other attachment(s)','otherUrl','other'),mkDoc('Govt ID (Aadhaar may be masked)','govtIdUrl','govtid'),mkDoc('Signed NDA','ndaUrl','nda')],
+        docs:[mkDoc('CV / Résumé','cvUrl','cv'),mkDoc('Cover letter','clUrl','cover'),mkDoc('Email as PDF (saved by the intake)','emailPdfUrl','')]
+          .concat(otherRows,[mkDoc('Govt ID (Aadhaar may be masked)','govtIdUrl','govtid'),mkDoc('Signed NDA','ndaUrl','nda')]),
         onCheckFiles:()=>this.checkFiles(c), checkBusy:this.state.checkBusy, checkLabel:this.state.checkBusy?'Checking…':'Check files',
         filesHint:'Files open in your browser’s Google account'+(this._driveUser?(' ('+this._driveUser+')'):'')+'. "Can’t be accessed" usually means that account has no access — set "Open files as" in Settings → Sync, or press Check files.',
         ...(()=>{ const a=c.aiSuggest||null, has=!!(a&&a.recommendation), sc=has?a.score:null, rp=this.recPill(a);
@@ -3377,13 +3594,14 @@ class Component extends DCLogic {
   }
   safe(name,fn){ try{ const r=fn()||{}; if(this._errs&&this._errs[name]) delete this._errs[name]; return r; }catch(e){ console.error('['+name+']',e); this._errs=this._errs||{}; this._errs[name]=(e&&e.message)||String(e); return {}; } }
   renderVals(){
+    this._memo={};   // per-render cache; see deskFlagList
     const base={ themeAttr:this.state.theme, booting:this.state.booting, bootFailed:!!this.state.bootError, bootErrorMsg:this.state.bootError, reloadPage:()=>location.reload(),
       ready:!this.state.booting&&!this.state.bootError&&!!this.data&&!!this.C };
     if(!base.ready) return base;
     const map={cohorts:'cohortsVM',overview:'overviewVM',pipeline:'pipelineVM',applied:'pipelineVM',shortlisted:'pipelineVM',interviews:'interviewsVM',approvals:'approvalsVM',onboarding:'onboardingVM',
       running:'runningVM',extensions:'extensionsVM',analytics:'analyticsVM',ai:'aiVM',timeline:'timelineVM',playbook:'playbookVM',settings:'settingsVM'};
     const p=map[this.state.page]?this.state.page:'cohorts';
-    const out=Object.assign(base,this.safe('shell',()=>this.shellVM()),this.safe(p,()=>this[map[p]]()),this.safe('drawer',()=>this.drawerVM()),this.safe('compose',()=>this.composeVM()),this.safe('dialogs',()=>this.modalVM()));
+    const out=Object.assign(base,this.safe('shell',()=>this.shellVM()),this.safe('rail',()=>this.railVM()),this.safe(p,()=>this[map[p]]()),this.safe('drawer',()=>this.drawerVM()),this.safe('compose',()=>this.composeVM()),this.safe('dialogs',()=>this.modalVM()));
     out.banners=this.safe('banners',()=>({b:this.banners()})).b||[];
     return out;
   }
