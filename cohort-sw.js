@@ -1,7 +1,7 @@
-// Cohort service worker (v23).
+// Cohort service worker (v24).
 // Own files: network first, cached copy when offline. Versioned CDN libraries (React, fonts, icons): cached after
 // first use so the app also opens offline. The Google endpoint is never touched.
-const CACHE = 'cohort-v23';
+const CACHE = 'cohort-v24';
 const OWN = ['./Cohort.dc.html','./index.html','./CohortReview.dc.html','./support.js','./cohort-core.js','./cohort-data.js','./cohort.webmanifest',
   './logo.png','./cohort-icon-192.png','./cohort-icon-512.png','./cohort-icon-180.png','./gas/Code.gs','./gas/WebApp.gs','./gas/AI.gs'];
 const CDN = /^https:\/\/(unpkg\.com|cdn\.jsdelivr\.net|cdnjs\.cloudflare\.com|fonts\.googleapis\.com|fonts\.gstatic\.com)\//;

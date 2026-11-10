@@ -19,7 +19,7 @@ export const RECOMMEND_OPTIONS = [
 ];
 
 export const DEFAULT_TEMPLATES = [
-  { key:'ack', tag:'ACK', group:'Acknowledgement', name:'Application acknowledgement',
+  { key:'ack', tag:'APPLIED', group:'Applied · acknowledgement', name:'Application acknowledgement',
     when:'Sent automatically by the Gmail intake when a correctly-subjected application is filed (not after the month has closed).',
     subject:'We have received your application — Chambers of Bharat Chugh',
     body:[
@@ -29,8 +29,8 @@ export const DEFAULT_TEMPLATES = [
       'If you haven\u2019t already, do read our note on how the Chambers approaches internships and what we look for — it will tell you what we value.','',
       'Warm regards,','The Chambers of Bharat Chugh'].join('\n') },
 
-  { key:'missing_docs', tag:'ACK', group:'Acknowledgement', name:'Missing documents',
-    when:'Sent from a "Missing CV" flag in the AI Desk (preview first), or automatically if you switch that on in Settings \u2192 Automation.',
+  { key:'missing_docs', tag:'APPLIED', group:'Applied · acknowledgement', name:'Missing documents',
+    when:'Sent from a "No CV" flag on the Review Desk (preview first), or automatically if you switch that on in Settings \u2192 Automation.',
     subject:'Your application — one thing missing',
     body:[
       'Dear {{Name}},','',
@@ -38,7 +38,7 @@ export const DEFAULT_TEMPLATES = [
       'Please reply to this email with it attached — it will be added to your application automatically.','',
       'Warm regards,','The Chambers of Bharat Chugh'].join('\n') },
 
-  { key:'p2_accept', tag:'PHASE 2', group:'Phase 2 · Shortlisting', name:'Shortlisted — interview call',
+  { key:'p2_accept', tag:'SHORTLISTED', group:'Shortlisted', name:'Shortlisted — interview call',
     when:'Sent from the Interview tab or the candidate\u2019s Decision tab once a date and time are set. Never sent automatically.',
     subject:'Your application for {{Month}} — an interview with the Chambers',
     body:[
@@ -53,7 +53,7 @@ export const DEFAULT_TEMPLATES = [
       'Looking forward to speaking with you.','',
       'Warm regards,','The Chambers of Bharat Chugh'].join('\n') },
 
-  { key:'iv_reminder', tag:'PHASE 2', group:'Phase 2 · Shortlisting', name:'Interview reminder (day before)',
+  { key:'iv_reminder', tag:'INTERVIEW', group:'Interview', name:'Interview reminder (day before)',
     when:'Sent at 9 AM the day before the interview, only if "Remind candidates the day before" is on in Settings \u2192 Automation.',
     subject:'Reminder — your interview tomorrow, {{Time}}',
     body:[
@@ -63,7 +63,7 @@ export const DEFAULT_TEMPLATES = [
       'If anything has changed, please reply to this email.','',
       'Warm regards,','The Chambers of Bharat Chugh'].join('\n') },
 
-  { key:'p2_reject', tag:'PHASE 2', group:'Phase 2 · Shortlisting', name:'Not shortlisted — after review',
+  { key:'p2_reject', tag:'SHORTLISTED', group:'Shortlisted', name:'Not shortlisted — after review',
     when:'Sent from a rejected candidate\u2019s record or in bulk from the Pipeline. Rejecting alone sends nothing.',
     subject:'Your application for {{Month}} — Chambers of Bharat Chugh',
     body:[
@@ -73,7 +73,7 @@ export const DEFAULT_TEMPLATES = [
       'We would genuinely welcome an application from you for an upcoming month; please do write to us again. We wish you the very best.','',
       'Warm regards,','The Chambers of Bharat Chugh'].join('\n') },
 
-  { key:'p3_accept', tag:'PHASE 3', group:'Phase 3 · Interview', name:'Selected after interview',
+  { key:'p3_accept', tag:'INTERVIEW', group:'Interview', name:'Selected after interview',
     when:'Sent by hand from a Finalist\u2019s Decision tab. Says "subject to final confirmation".',
     subject:'After your interview — {{Month}} {{Role}}, Chambers of Bharat Chugh',
     body:[
@@ -86,7 +86,7 @@ export const DEFAULT_TEMPLATES = [
       'Welcome aboard — we\u2019re looking forward to working with you.','',
       'Warm regards,','The Chambers of Bharat Chugh'].join('\n') },
 
-  { key:'p3_reject', tag:'PHASE 3', group:'Phase 3 · Interview', name:'Not selected after interview',
+  { key:'p3_reject', tag:'INTERVIEW', group:'Interview', name:'Not selected after interview',
     when:'Sent from a rejected candidate\u2019s record (after an interview) or in bulk.',
     subject:'After your interview — {{Month}}, Chambers of Bharat Chugh',
     body:[
@@ -96,7 +96,7 @@ export const DEFAULT_TEMPLATES = [
       'We would be happy to see you apply again for a future month — and, should you wish, we are glad to share brief feedback if you write to us. We wish you the very best for what lies ahead.','',
       'Warm regards,','The Chambers of Bharat Chugh'].join('\n') },
 
-  { key:'offer', tag:'OFFER', group:'Phase 4 · Offer & joining', name:'Final confirmation / joining',
+  { key:'offer', tag:'ONBOARDING', group:'Onboarding · the offer', name:'Final confirmation / joining',
     when:'Sent with "Send offer" once Mayank Sir has approved (or a bypass is recorded). Attaches the Handbook & NDA below.',
     subject:'Confirmed — your {{Month}} {{Role}} at the Chambers of Bharat Chugh',
     body:[
@@ -116,7 +116,7 @@ export const DEFAULT_TEMPLATES = [
       'We look forward to working with you.','',
       'Warm regards,','The Chambers of Bharat Chugh'].join('\n') },
 
-  { key:'nda_remind', tag:'NDA', group:'Phase 5 · Onboarding', name:'NDA reminder',
+  { key:'nda_remind', tag:'ONBOARDING', group:'Onboarding · paperwork', name:'NDA reminder',
     when:'Sent from Onboarding or the candidate\u2019s Decision tab while the signed NDA is awaited \u2014 or automatically if NDA reminders are on in Settings \u2192 Automation.',
     subject:'Gentle reminder — your signed NDA for the {{Month}} {{Role}}',
     body:[
@@ -124,7 +124,7 @@ export const DEFAULT_TEMPLATES = [
       'A gentle reminder to send us the scanned copy of your signed NDA, and to bring a physical signed copy on your first day. If you have already sent it, please ignore this note.','',
       'Warm regards,','The Chambers of Bharat Chugh'].join('\n') },
 
-  { key:'ext_approved', tag:'PHASE 5', group:'Phase 5 · Onboarding', name:'Extension approved',
+  { key:'ext_approved', tag:'EXTENSION', group:'Extensions', name:'Extension approved',
     when:'Sent (after you confirm) when an extension is approved or bypassed in Approvals \u2192 Extensions.',
     subject:'Your extension at the Chambers of Bharat Chugh',
     body:[
@@ -193,8 +193,8 @@ export const DEFAULT_ASSOC_INVITE = [
   '\u2014 The Chambers of Bharat Chugh'].join('\n');
 
 export const GMAIL_STEPS = [
-  { n:1, title:'Nothing is required for intake', detail:'The script reads the inbox directly — labels and filters are only for your own tidiness. It files anything that looks like an application, sends a "quick fix" note when the month is missing, and quietly labels everything else (invoices, notices) Status/Ignored.' },
-  { n:2, title:'Labels it creates', detail:'Status/Correspondence (a reply from an existing candidate — attached to their record), Status/New (filed), Status/Needs-fix (month unreadable — applicant asked to resend), Status/Superseded (an older copy, or no attachment from the applicant), Status/Ignored (not an application), Status/Error (could not be processed — remove the label to retry). Filed mail also gets Career/Internship|Associate/YEAR/MM Month.' },
+  { n:1, title:'Nothing is required for intake', detail:'The script reads the inbox directly — labels and filters are only for your own tidiness. It files anything that looks like an application, sends a "quick fix" note when the month is missing, and quietly labels everything else (invoices, notices) Status/Ignored. An application that arrives with no CV attached is still filed, and shows up on the Review Desk under Flags as "No CV".' },
+  { n:2, title:'Labels it creates', detail:'Status/Correspondence (a reply from an existing candidate — attached to their record), Status/New (filed), Status/Needs-fix (month unreadable — applicant asked to resend), Status/Superseded (an older copy of the same application, or a thread with nothing from the applicant in it), Status/Ignored (not an application), Status/Error (could not be processed — remove the label to retry). Filed mail also gets Career/Internship|Associate/YEAR/MM Month.' },
   { n:3, title:'Optional filter', detail:'Search box → filter icon → Subject contains "Career - Internship for" → Create filter → tick Never send it to Spam. Repeat for "Career - Associate from". This only protects applications from the spam folder.' },
   { n:4, title:'Something was mis-filed?', detail:'Ignored an application by mistake: remove the Status/Ignored label from the thread in Gmail — it is picked up again within 10 minutes. Filed something that is not an application: delete the candidate in the dashboard (it stays deleted).' }
 ];

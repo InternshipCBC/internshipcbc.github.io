@@ -4,7 +4,7 @@
 // Rules: every function is self-contained (no imports, no DOM, no Apps Script services),
 // and only refers to MONTHS or to other functions in this file.
 
-export const CORE_VERSION = 'v23';
+export const CORE_VERSION = 'v24';
 export const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
 /** 'sept', 'September', 'SEP', 9 → 8 ; unknown → -1 */
@@ -170,9 +170,18 @@ export function mergeRecord(a, b){
       out[k] = tb > ta ? b[k] : (k in a ? a[k] : b[k]);
     }
   });
-  const f = {};
-  Object.keys(fa).forEach(k => { f[k] = fa[k]; });
-  Object.keys(fb).forEach(k => { f[k] = k === '$base' ? Math.min(f[k] != null ? f[k] : fb[k], fb[k]) : Math.max(f[k] || 0, fb[k]); });
+  // Field stamps are rebuilt from both sides and written back in a fixed (sorted) order, so merging a and b
+  // produces byte-identical output whichever way round it is done. sameJson() relies on that to decide
+  // whether a record really changed; without it two devices can bounce the same record back and forth.
+  const f = {}, fk = {};
+  Object.keys(fa).forEach(k => { fk[k] = 1; });
+  Object.keys(fb).forEach(k => { fk[k] = 1; });
+  Object.keys(fk).sort().forEach(k => {
+    const va = fa[k], vb = fb[k];
+    if(va == null) f[k] = vb;
+    else if(vb == null) f[k] = va;
+    else f[k] = (k === '$base') ? Math.min(va, vb) : Math.max(va, vb);
+  });
   out._f = f;
   out.updatedAt = Math.max(a.updatedAt || 0, b.updatedAt || 0);
   const union = (la, lb, keyOf, pick) => {

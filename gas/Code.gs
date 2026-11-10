@@ -1,5 +1,5 @@
 /**
- * Cohort V23 — Code.gs : settings, one-time setup, Gmail intake (applications AND candidate replies),
+ * Cohort V24 — Code.gs : settings, one-time setup, Gmail intake (applications AND candidate replies),
  * daily digest & reminders, nightly clean-up, diagnostics.
  *
  * The project has FOUR files: Core.gs, Code.gs, WebApp.gs, AI.gs (all copied from the dashboard Playbook).
@@ -37,7 +37,7 @@ const INTAKE_WINDOW_DAYS  = 120;   // how far back the inbox is searched for app
 const SWEEP_REJECTED_DAYS = 60;    // Drive files of rejected candidates are trashed after this many days (0 = never)
 /* ====================================================================== */
 
-const COHORT_SERVER_VERSION = "v23";
+const COHORT_SERVER_VERSION = "v24";
 const SHEET_HEADERS = ["Received","Track","Month","Year","Name","Email","CV link","Cover link","NDA link","Email PDF","Other files",
   "Status","Key","Subject","Body","Files","CandidateId","Updated","AI","MessageId","ThreadId"];
 const OUR_TRIGGERS = ["processInbox","aiVetPending","nightly","morning","dailyReminders","autoSweepRejected"];
@@ -168,14 +168,19 @@ function processInbox(){
   // 2) Applications.
   const data = readRows_(sh);
   const byKey = {}; data.rows.forEach(r => { if(r.Key) byKey[String(r.Key)] = r; });
-  const q = "in:inbox has:attachment newer_than:" + INTAKE_WINDOW_DAYS + "d -label:Status/New -label:Status/Needs-fix " +
+  const qBase = "newer_than:" + INTAKE_WINDOW_DAYS + "d -label:Status/New -label:Status/Needs-fix " +
             "-label:Status/Superseded -label:Status/Ignored -label:Status/Error -label:Status/Correspondence";
+  const q = "in:inbox has:attachment " + qBase;
   // Soonest months first: search month by month (current month, then the next six), then everything else.
   // (A single "newest 50" search would let a flood of later-month emails hide earlier months' applications.)
   const threads = [], seenTh = {};
   const take = list => list.forEach(t => { const id = t.getId(); if(!seenTh[id]){ seenTh[id] = 1; threads.push(t); } });
   upcomingMonths_(7).forEach(m => { if(threads.length < 120 && Date.now() - t0 < 60000) take(GmailApp.search(q + " (" + monthTerms_(m.month, m.year).join(" OR ") + ")", 0, 40)); });
   if(threads.length < 120) take(GmailApp.search(q, 0, 50));
+  // Applications that forgot the attachment (or sent a Drive link instead) used to be invisible: not filed, not
+  // labelled, and re-scanned every ten minutes for ever. File them too, with no documents, so a person sees them.
+  if(threads.length < 120 && Date.now() - t0 < 90000)
+    take(GmailApp.search('in:inbox -has:attachment ' + qBase + ' (subject:"Career - Internship" OR subject:"Career - Associate")', 0, 25));
   const items = threads.map(th => { const s = th.getFirstMessageSubject() || ""; const p = parseApplication(s, ""); return { th, rank: p ? cohortRank_(p.month, p.year) : 999999, date: th.getLastMessageDate().getTime() }; });
   items.sort((a, b) => (a.rank - b.rank) || (a.date - b.date));
   for(let i = 0; i < items.length; i++){
@@ -206,12 +211,18 @@ function processInbox(){
       const sub = cohortFolder_(folder, p.month + " " + p.year, p);
       const files = saveAttachments_(msg, sub, origin.name, p);
       const pdf = saveBodyPdf_(msg, sub, origin.name, p);
-      if(existing){ trashUrls_([existing["CV link"], existing["Cover link"], existing["NDA link"], existing["Email PDF"]].concat(String(existing["Other files"] || "").split(" , "))); }
+      // A later email with no attachments must never wipe documents the applicant already sent.
+      const keepDocs = !!(existing && picked.noFiles && (existing["CV link"] || existing["Cover link"] || existing["Other files"]));
+      if(existing && !keepDocs) trashUrls_([existing["CV link"], existing["Cover link"], existing["NDA link"], existing["Email PDF"]].concat(String(existing["Other files"] || "").split(" , ")));
+      else if(existing) trashUrls_([existing["Email PDF"]]);
+      if(picked.noFiles) h.noDocs = (h.noDocs || 0) + 1;
       const closeTs = (coh && coh.deadlines && coh.deadlines.applyClose) || defaultDeadlines(p.month, p.year).applyClose;
       const late = Date.now() > closeTs + 864e5;
       const row = { Received: new Date(msgTs), Track: p.track, Month: p.month, Year: p.year, Name: origin.name, Email: origin.email,
-        "CV link": files.cv, "Cover link": files.cover, "NDA link": files.nda, "Email PDF": pdf, "Other files": files.other,
-        Status: late ? "Late" : "New", Key: key, Subject: cell_(subject, 500), Body: cell_(body, 6000), Files: cell_(files.names.join(" | "), 1000),
+        "CV link": keepDocs ? existing["CV link"] : files.cv, "Cover link": keepDocs ? existing["Cover link"] : files.cover,
+        "NDA link": keepDocs ? existing["NDA link"] : files.nda, "Email PDF": pdf, "Other files": keepDocs ? existing["Other files"] : files.other,
+        Status: late ? "Late" : "New", Key: key, Subject: cell_(subject, 500), Body: cell_(body, 6000),
+        Files: keepDocs ? existing.Files : cell_(files.names.join(" | "), 1000),
         CandidateId: existing ? existing.CandidateId : "", Updated: new Date(), AI: "", MessageId: msg.getId(), ThreadId: th.getId() };
       if(!row.CandidateId) row.CandidateId = "c_" + Utilities.getUuid().replace(/-/g, "").slice(0, 14);
       writeRowObj_(sh, data.head, existing ? existing._row : 0, row);
@@ -241,18 +252,22 @@ function processInbox(){
   health_("intake", h);
 }
 
-/** Newest message in the thread that carries real attachments and comes from (or forwards) an applicant. */
+/** Newest message in the thread that carries real attachments and comes from (or forwards) an applicant.
+ *  If no message has attachments, the newest message from an applicant is used instead, so an application
+ *  sent without a CV is still filed (and flagged) rather than silently ignored. */
 function pickMessage_(th, counselEmails){
   const msgs = th.getMessages();
+  let fallback = null;
   for(let i = msgs.length - 1; i >= 0; i--){
     const m = msgs[i];
+    const origin = resolveApplicant_(m, counselEmails);
+    if(!origin) continue;
     let atts = []; try{ atts = m.getAttachments({ includeInlineImages: false }); }catch(e){}
     atts = atts.filter(a => !(/^image\//.test(a.getContentType()) && a.getSize() < 20000));
-    if(!atts.length) continue;
-    const origin = resolveApplicant_(m, counselEmails);
-    if(origin) return { msg: m, origin };
+    if(atts.length) return { msg: m, origin, noFiles: false };
+    if(!fallback) fallback = { msg: m, origin, noFiles: true };
   }
-  return null;
+  return fallback;
 }
 function resolveApplicant_(msg, counselEmails){
   const from = cleanEmail(msg.getFrom());
@@ -341,9 +356,10 @@ function processReplies_(snap, folder, counselEmails, corr, h, t0){
       if(isBlockedAddress(from, INTERNAL) || counselEmails.indexOf(from) > -1) return;
       const subject = m.getSubject() || "", body = fullBody_(m);
       let atts = []; try{ atts = m.getAttachments({ includeInlineImages: false }).filter(a => !(/^image\//.test(a.getContentType()) && a.getSize() < 20000)); }catch(e){}
-      // A (re-)application in its own thread is left to the application intake (it updates or creates the record).
+      // A (re-)application in its own thread is left to the application intake (it updates or creates the record),
+      // whether or not it carries an attachment — otherwise it would be labelled Correspondence and never filed.
       const p = parseApplication(subject, "");
-      if(atts.length && isApplicationLike(subject, body) && p && th.getId() !== c.gmailThread) return;
+      if(isApplicationLike(subject, body) && p && th.getId() !== c.gmailThread) return;
       const fresh = freshText_(body);
       const item = { msgId: id, ts: m.getDate().getTime(), subject: cell_(subject, 200), text: fresh, threadId: th.getId(),
         link: gmailLink_(th.getId()), files: [], intent: heuristicIntent_(subject + "\n" + fresh, atts), handled: false, needsAi: true };
@@ -389,7 +405,7 @@ function applyCorrespondence_(st, corr){
       else if(f.slot === "cover" && !c.clUrl) applyChange(c, "clUrl", f.url, now);
       else applyChange(c, "otherUrl", c.otherUrl ? (c.otherUrl + " , " + f.url) : f.url, now);
     });
-    if(x.item.files.some(f => f.slot === "cv" || f.slot === "cover")) applyChange(c, "aiRequest", now, now);   // re-read with the new document
+    if(x.item.files.some(f => f.slot === "cv" || f.slot === "cover")){ applyChange(c, "aiRequest", now, now); markCvFlag_(c, now); }   // re-read with the new document
     reactToIntent_(c, x.item, now);
     c.hist.push({ ts: now, by: "Gmail", txt: "Candidate wrote: “" + (x.item.subject || "(no subject)") + "”" + (x.item.files.length ? (" with " + x.item.files.map(f => f.name).join(", ")) : "") });
     bump_(st, c);
@@ -526,6 +542,11 @@ function sendToCandidate_(st, c, key, extra){
 }
 
 /* ------------------------- Sheet → shared data ------------------------- */
+/** Raise (or clear) the "no CV" flag without any AI, so the Review Desk is useful even with the AI switched off. */
+function markCvFlag_(c, now){
+  if(c.cvUrl) resolveFlag_(c, "missing_cv", "Intake", now);
+  else raiseFlag_(c, "missing_cv", "warn", "No CV came with the application. Ask for it, or paste the Drive link on the Profile tab.", now);
+}
 function syncSheetToStore_(st, sh){
   const data = readRows_(sh);
   const idCol = data.head.indexOf("CandidateId") + 1;
@@ -557,10 +578,11 @@ function syncSheetToStore_(st, sh){
         appMsgId: String(r.MessageId || ""), gmailThread: thread, gmailUrl: gmailLink_(thread),
         hist: [{ ts: now, by: "Intake", txt: "Application filed from Gmail (" + String(r.Subject || "").slice(0, 80) + ")" }] });
       Object.keys(docs).forEach(k => { c[k] = String(docs[k] || ""); });
-      st.candidates[cid] = c; bump_(st, c); created++;
+      st.candidates[cid] = c; markCvFlag_(c, now); bump_(st, c); created++;
     } else if(rowTs && rowTs > (c.intakeTs || 0)){
       Object.keys(docs).forEach(k => { if(docs[k] && docs[k] !== c[k]) applyChange(c, k, String(docs[k]), now); });
       applyChange(c, "intakeTs", rowTs, now);
+      markCvFlag_(c, now);
       if(thread){ applyChange(c, "gmailThread", thread, now); applyChange(c, "gmailUrl", gmailLink_(thread), now); applyChange(c, "appMsgId", String(r.MessageId || ""), now); }
       if(c.intakeTs && (c.hist || []).length) { applyChange(c, "aiRequest", now, now); c.hist.push({ ts: now, by: "Intake", txt: "Newer application email received — documents updated" }); }
       bump_(st, c); updated++;

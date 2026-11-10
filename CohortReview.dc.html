@@ -134,12 +134,15 @@ class Component extends DCLogic {
     const answers={}; p.interns.forEach(it=>{ answers[it.id]={worked:null,ratings:{},recommend:'',stipend:'',comments:''}; });
     this.setState({payload:p,answers,counsel:p.who||'Counsel'});
     import('./cohort-data.js').then(m=>this.setState({params:m.REVIEW_PARAMS||[],recOpts:(m.RECOMMEND_OPTIONS||[]).filter(o=>o.v!=='na')})).catch(()=>this.setState({error:'Could not load the form. Check the internet connection and reload.'}));
-    this.post({action:'myReviews',key:p.k,ids:p.interns.map(i=>i.id)}).then(r=>{ const prev=(r&&r.reviews)||{}; const a=Object.assign({},this.state.answers); let n=0;
+    // Pass the endpoint explicitly: setState is asynchronous, so this.state.payload is not readable yet.
+    this.post({action:'myReviews',key:p.k,ids:p.interns.map(i=>i.id)},p.e).then(r=>{ const prev=(r&&r.reviews)||{}; const a=Object.assign({},this.state.answers); let n=0;
       Object.keys(prev).forEach(id=>{ if(a[id]){ a[id]=Object.assign({},a[id],prev[id],{ratings:Object.assign({},prev[id].ratings||{})}); n++; } });
       if(n) this.setState({answers:a,prefilled:n}); }).catch(()=>{});
   }
-  async post(body){
-    const r=await fetch(this.state.payload?this.state.payload.e:'',{method:'POST',body:JSON.stringify(body),redirect:'follow',credentials:'omit',cache:'no-store'});
+  async post(body,endpoint){
+    const url=endpoint||(this.state.payload?this.state.payload.e:'');
+    if(!url) throw new Error('This review link does not carry the Chambers’ address — ask the team for a fresh one.');
+    const r=await fetch(url,{method:'POST',body:JSON.stringify(body),redirect:'follow',credentials:'omit',cache:'no-store'});
     const t=await r.text(); try{ return JSON.parse(t); }catch(e){ throw new Error('The Chambers’ server did not answer properly (HTTP '+r.status+').'); }
   }
   upd(id,patch){ const a=Object.assign({},this.state.answers); a[id]=Object.assign({},a[id],patch); this.setState({answers:a,error:''}); }
