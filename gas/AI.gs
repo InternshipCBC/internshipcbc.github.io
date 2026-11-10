@@ -39,6 +39,46 @@ const AI_REPLY_SYSTEM = [
   "Return ONLY JSON: {\"intent\":\"\",\"summary\":\"(under 20 words)\",\"needsReply\":false}"
 ].join("\n");
 
+/* ============================== the queue ==============================
+ * The order the AI reads in, and the order the dashboard shows. The rule is simple and absolute: the soonest
+ * month that is still open comes first, and it is finished before the next month is touched at all. A batch is
+ * small, so without that rule a month with a lot of applications never got read while later months sailed past.
+ */
+function aiQueue_(st){
+  const want = [];
+  Object.keys(st.candidates).forEach(id => {
+    const c = st.candidates[id], coh = st.cohorts[c.cohortId];
+    if(!isLiveCohort_(coh)) return;                       // never spend AI time on past or closed months
+    const ai = c.aiSuggest;
+    const asked = (c.aiRequest || 0) > ((ai && ai.at) || 0);   // somebody pressed "Read now"
+    if(!asked){
+      if(ai && (ai.at || ai.tries >= 3)) return;               // already read, or given up on
+      if(c.stage !== "applied" || c.outcome === "rejected") return;
+    }
+    want.push({ c: c, rank: cohortRank_(coh.month, coh.year), asked: asked ? 0 : 1, at: c.createdAt || 0 });
+  });
+  want.sort(function(a, b){ return (a.rank - b.rank) || (a.asked - b.asked) || (a.at - b.at); });
+  return want.map(function(x){ return x.c; });
+}
+/** What is waiting, month by month — so "December has not been read yet" is visible instead of being guessed at. */
+function aiQueueByMonth_(st){
+  const q = aiQueue_(st), out = {}, order = [];
+  Object.keys(st.cohorts).forEach(function(id){
+    const coh = st.cohorts[id];
+    if(!isLiveCohort_(coh)) return;
+    out[id] = { id: id, label: coh.label, rank: cohortRank_(coh.month, coh.year), applied: 0, unread: 0, late: 0 };
+    order.push(id);
+  });
+  Object.keys(st.candidates).forEach(function(id){
+    const c = st.candidates[id], row = out[c.cohortId];
+    if(!row || c.outcome === "rejected" || c.draft) return;
+    if(c.stage === "applied") row.applied++;
+    if(c.late) row.late++;
+  });
+  q.forEach(function(c){ if(out[c.cohortId]) out[c.cohortId].unread++; });
+  return order.map(function(id){ return out[id]; }).sort(function(a, b){ return a.rank - b.rank; });
+}
+
 /* ================================ main run ================================ */
 /** Timer entry point and dashboard "Run AI now". opts.ids limits the run to those candidates. */
 function aiVetPending(opts){
@@ -54,14 +94,7 @@ function aiVetPending(opts){
   try{
     const st0 = loadStore_(), auto = automation_(st0);
     const rows = {}; try{ readRows_(appSheet_()).rows.forEach(r => { if(r.CandidateId) rows[String(r.CandidateId)] = r; }); }catch(e){}
-    const wanted = opts.ids ? opts.ids.map(id => st0.candidates[id]).filter(Boolean) : Object.keys(st0.candidates).map(k => st0.candidates[k]).filter(c => {
-      if(!isLiveCohort_(st0.cohorts[c.cohortId])) return false;     // never spend AI time on past or closed months
-      const ai = c.aiSuggest;
-      if((c.aiRequest || 0) > ((ai && ai.at) || 0)) return true;
-      if(ai && (ai.at || ai.tries >= 3)) return false;
-      return c.stage === "applied" && c.outcome !== "rejected";
-    }).sort((a, b) => (cohortRank_((st0.cohorts[a.cohortId] || {}).month, (st0.cohorts[a.cohortId] || {}).year) - cohortRank_((st0.cohorts[b.cohortId] || {}).month, (st0.cohorts[b.cohortId] || {}).year))   // soonest month first
-      || ((b.aiRequest || 0) - (a.aiRequest || 0)) || ((a.createdAt || 0) - (b.createdAt || 0)));
+    const wanted = opts.ids ? opts.ids.map(id => st0.candidates[id]).filter(Boolean) : aiQueue_(st0);
     const results = [];
     const limit = opts.ids ? opts.ids.length : AI_BATCH;
     for(let i = 0; i < wanted.length && results.length < limit; i++){

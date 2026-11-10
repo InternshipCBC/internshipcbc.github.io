@@ -25,7 +25,8 @@ export const DEFAULT_TEMPLATES = [
     body:[
       'Dear {{Name}},','',
       'Thank you for writing to us — your application for the {{Month}} {{Role}} has reached the Chambers of Bharat Chugh, and has been logged for review.','',
-      'We read every application ourselves, properly, so this takes a little time. You will hear from us on the outcome by {{ShortlistDate}}. If you are shortlisted, we will write with the next steps.','',
+      '{{LateNote}}',
+      'We read every application ourselves, properly, so this takes a little time. You will hear from us on the outcome {{ReplyBy}}. If you are shortlisted, we will write with the next steps.','',
       'If you haven\u2019t already, do read our note on how the Chambers approaches internships and what we look for — it will tell you what we value.','',
       'Warm regards,','The Chambers of Bharat Chugh'].join('\n') },
 
@@ -193,10 +194,12 @@ export const DEFAULT_ASSOC_INVITE = [
   '\u2014 The Chambers of Bharat Chugh'].join('\n');
 
 export const GMAIL_STEPS = [
-  { n:1, title:'Nothing is required for intake', detail:'The script reads the inbox directly — labels and filters are only for your own tidiness. It files anything that looks like an application, sends a "quick fix" note when the month is missing, and quietly labels everything else (invoices, notices) Status/Ignored. An application that arrives with no CV attached is still filed, and shows up on the Review Desk under Flags as "No CV".' },
-  { n:2, title:'Labels it creates', detail:'Status/Correspondence (a reply from an existing candidate — attached to their record), Status/New (filed), Status/Needs-fix (month unreadable — applicant asked to resend), Status/Superseded (an older copy of the same application, or a thread with nothing from the applicant in it), Status/Ignored (not an application), Status/Error (could not be processed — remove the label to retry). Filed mail also gets Career/Internship|Associate/YEAR/MM Month.' },
-  { n:3, title:'Optional filter', detail:'Search box → filter icon → Subject contains "Career - Internship for" → Create filter → tick Never send it to Spam. Repeat for "Career - Associate from". This only protects applications from the spam folder.' },
-  { n:4, title:'Something was mis-filed?', detail:'Ignored an application by mistake: remove the Status/Ignored label from the thread in Gmail — it is picked up again within 10 minutes. Filed something that is not an application: delete the candidate in the dashboard (it stays deleted).' }
+  { n:1, title:'Nothing is required for intake', detail:'The script reads the inbox directly — labels and filters are only for your own tidiness. It files anything that looks like an application, answers every applicant (including one who wrote after the month closed), sends a "quick fix" note when the month cannot be read, and quietly labels everything else (invoices, notices) Cohort/Not an application.' },
+  { n:2, title:'The labels it creates', detail:'All of them sit under one "Cohort" family so nothing clashes with your own labels. Cohort/Filed — on a candidate record. Cohort/Reply — a reply from someone already on file. Cohort/Needs fix — the month could not be read, and the applicant has been asked to resend. Cohort/Not an application. Cohort/Duplicate — an older or repeated copy. Cohort/Problem — could not be processed; these are listed on the Review Desk with a Retry button, so nothing disappears. Filed mail also gets a flat month label, Cohort/2026-12 December, which sorts in date order, and Cohort/Associate for the associate track.' },
+  { n:3, title:'Upgrading from the old labels', detail:'The old Status/… and Career/… labels still work: the intake skips anything carrying one, so nothing is processed twice. Running setup copies them onto the new labels (run migrateLabels() again if you have thousands). Once the Review Desk and Gmail agree, you can delete the old labels by hand.' },
+  { n:4, title:'Where the documents go', detail:'Cohort Files → 2026-12 December → Aarav Mehta (aarav@example.com) → CV — CV_Aarav.pdf. One folder per candidate inside the month, so everything about one person stays together and can be opened or shared in one go. Anything they email later (a signed NDA, an ID, a fresh CV) lands in the same folder. The candidate record has a link straight to it.' },
+  { n:5, title:'Optional filter', detail:'Search box → filter icon → Subject contains "Career - Internship for" → Create filter → tick Never send it to Spam. Repeat for "Career - Associate from". This only protects applications from the spam folder.' },
+  { n:6, title:'Something was mis-filed?', detail:'Ignored an application by mistake: remove the Cohort/Not an application label from the thread in Gmail — it is picked up again within 10 minutes. Could not be processed: press Retry on the Review Desk. Filed something that is not an application: delete the candidate in the dashboard (it stays deleted).' }
 ];
 
 /** The four Apps Script files, exactly as the Playbook shows them. Core.gs is generated from cohort-core.js. */

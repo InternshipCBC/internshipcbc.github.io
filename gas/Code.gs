@@ -60,7 +60,10 @@ function setup(){
   const res = withStore_(st => syncSheetToStore_(st, sh));
   say("✓ Shared data ready (" + res.total + " candidates; " + res.created + " created / " + res.linked + " linked from the Sheet)");
   say(applyFolderSharing_(folder));
-  precreateLabels_(); say("✓ Gmail labels ready");
+  precreateLabels_(); say("✓ Gmail labels ready (Cohort/Filed, Cohort/Reply, Cohort/Needs fix, Cohort/Not an application, Cohort/Duplicate, Cohort/Problem, plus one per month)");
+  const moved = migrateLabels_(60000);
+  say(moved ? ("✓ Copied " + moved + " thread(s) from the old Status/… labels onto the new ones — run migrateLabels() again if you have a lot, then delete the old labels in Gmail")
+            : "• No old Status/… labels to carry over");
   say(typeof Drive !== "undefined" ? "✓ Drive API service is on — the AI can read PDF, Word and scanned CVs" : "• Drive API service is off — the AI reads email text only. To let it read CVs: ⊕ Services → Drive API → Add, then run setup again.");
   say(typeof Calendar !== "undefined" ? "✓ Calendar API service is on — interview invites get Google Meet links" : "• Calendar API service is off — invites are still sent, without an automatic Meet link (⊕ Services → Google Calendar API to add).");
   try{ const u = ScriptApp.getService().getUrl(); say(u ? ("Web app URL of this project: " + u) : "! Not deployed yet: Deploy → New deployment → Web app (Execute as: Me, Who has access: Anyone)"); }catch(e){}
@@ -160,7 +163,7 @@ function processInbox(){
   const counselEmails = (getSetting_(snap, "counsels", []) || []).map(c => cleanEmail(c.email)).filter(Boolean);
   const auto = automation_(snap);
   let quota = 0; try{ quota = MailApp.getRemainingDailyQuota(); }catch(e){}
-  const mailLogs = [], corr = [];
+  const mailLogs = [], corr = [], folderLinks = {};
 
   // 1) Candidate replies and documents (NDA, ID, updated CV) — logged on their record, never filed as new applications.
   if(auto.logReplies !== false){ try{ processReplies_(snap, folder, counselEmails, corr, h, t0); }catch(e){ h.replyErr = String(e.message || e).slice(0, 200); } }
@@ -168,8 +171,7 @@ function processInbox(){
   // 2) Applications.
   const data = readRows_(sh);
   const byKey = {}; data.rows.forEach(r => { if(r.Key) byKey[String(r.Key)] = r; });
-  const qBase = "newer_than:" + INTAKE_WINDOW_DAYS + "d -label:Status/New -label:Status/Needs-fix " +
-            "-label:Status/Superseded -label:Status/Ignored -label:Status/Error -label:Status/Correspondence";
+  const qBase = "newer_than:" + INTAKE_WINDOW_DAYS + "d " + notHandledQuery_();
   const q = "in:inbox has:attachment " + qBase;
   // Soonest months first: search month by month (current month, then the next six), then everything else.
   // (A single "newest 50" search would let a flood of later-month emails hide earlier months' applications.)
@@ -188,13 +190,13 @@ function processInbox(){
     const th = items[i].th;
     try{
       const picked = pickMessage_(th, counselEmails);
-      if(!picked){ label_(th, "Status/Superseded"); h.superseded++; continue; }
+      if(!picked){ label_(th, LBL.duplicate); h.superseded++; continue; }
       const msg = picked.msg, origin = picked.origin;
       const subject = msg.getSubject() || "", body = fullBody_(msg);
-      if(!isApplicationLike(subject, body)){ label_(th, "Status/Ignored"); h.ignored++; continue; }
+      if(!isApplicationLike(subject, body)){ label_(th, LBL.notApp); h.ignored++; continue; }
       const p = parseApplication(subject, body);
       if(!p){
-        label_(th, "Status/Needs-fix"); h.needsFix++;
+        label_(th, LBL.needsFix); h.needsFix++;
         const nfKey = "nf|" + origin.email + "|" + Utilities.formatDate(new Date(), "GMT", "yyyyMM");
         if(quota > 5 && !alreadyAcked_(nfKey) && !isBlockedAddress(origin.email, INTERNAL.concat(getSetting_(snap, "noReplyList", [])))){
           sendTemplate_(snap, /assoc/i.test(subject) ? "needsfix_associate" : "needsfix_internship", origin.email, { Name: origin.name });
@@ -203,12 +205,12 @@ function processInbox(){
         continue;
       }
       const key = candidateKey(origin.email, p.track, p.month, p.year);
-      if(snap.deletedKeys && snap.deletedKeys[key]){ label_(th, "Status/Superseded"); h.superseded++; continue; }
+      if(snap.deletedKeys && snap.deletedKeys[key]){ label_(th, LBL.duplicate); h.superseded++; continue; }
       const existing = byKey[key];
       const msgTs = msg.getDate().getTime();
-      if(existing && new Date(existing.Received).getTime() >= msgTs){ label_(th, "Status/Superseded"); h.superseded++; continue; }
+      if(existing && new Date(existing.Received).getTime() >= msgTs){ label_(th, LBL.duplicate); h.superseded++; continue; }
       const coh = cohortFromSnap_(snap, p.month, p.year);
-      const sub = cohortFolder_(folder, p.month + " " + p.year, p);
+      const sub = candidateFolder_(cohortFolder_(folder, p.month + " " + p.year, p), origin.name, origin.email);
       const files = saveAttachments_(msg, sub, origin.name, p);
       const pdf = saveBodyPdf_(msg, sub, origin.name, p);
       // A later email with no attachments must never wipe documents the applicant already sent.
@@ -216,8 +218,10 @@ function processInbox(){
       if(existing && !keepDocs) trashUrls_([existing["CV link"], existing["Cover link"], existing["NDA link"], existing["Email PDF"]].concat(String(existing["Other files"] || "").split(" , ")));
       else if(existing) trashUrls_([existing["Email PDF"]]);
       if(picked.noFiles) h.noDocs = (h.noDocs || 0) + 1;
-      const closeTs = (coh && coh.deadlines && coh.deadlines.applyClose) || defaultDeadlines(p.month, p.year).applyClose;
+      const dl = (coh && coh.deadlines) || defaultDeadlines(p.month, p.year);
+      const closeTs = dl.applyClose;
       const late = Date.now() > closeTs + 864e5;
+      const folderUrl = (function(){ try{ return sub.getUrl ? sub.getUrl() : ""; }catch(e){ return ""; } })();
       const row = { Received: new Date(msgTs), Track: p.track, Month: p.month, Year: p.year, Name: origin.name, Email: origin.email,
         "CV link": keepDocs ? existing["CV link"] : files.cv, "Cover link": keepDocs ? existing["Cover link"] : files.cover,
         "NDA link": keepDocs ? existing["NDA link"] : files.nda, "Email PDF": pdf, "Other files": keepDocs ? existing["Other files"] : files.other,
@@ -227,23 +231,31 @@ function processInbox(){
       if(!row.CandidateId) row.CandidateId = "c_" + Utilities.getUuid().replace(/-/g, "").slice(0, 14);
       writeRowObj_(sh, data.head, existing ? existing._row : 0, row);
       if(!existing){ byKey[key] = Object.assign({ _row: sh.getLastRow() }, row); h.filed++; } else h.updated++;
-      label_(th, "Status/New"); applyMonthLabel_(th, p);
-      if(late){ h.late++; continue; }
+      label_(th, LBL.filed); applyMonthLabel_(th, p);
+      if(late) h.late++;
+      folderLinks[row.CandidateId] = folderUrl;
+      // Every applicant is answered, including one who wrote after the month closed. Before, a late application
+      // was filed and then skipped here, so the nearest months — the ones whose deadline has already passed —
+      // were the only ones nobody ever heard back from.
       if(!existing && quota > 5 && !alreadyAcked_(key)){
         const ok = sendTemplate_(snap, "ack", origin.email, { Name: origin.name, FirstName: String(origin.name).split(" ")[0], Month: p.month + " " + p.year,
           Role: p.track === "Associate" ? "Associate role" : "internship",
-          ShortlistDate: fmtDateIST((coh && coh.deadlines && coh.deadlines.shortlistBy) || defaultDeadlines(p.month, p.year).shortlistBy) }, replyableThread_(th, origin.email));
+          ShortlistDate: fmtDateIST(nextFuture_([dl.shortlistBy, dl.interviewBy, dl.approveBy])),
+          ReplyBy: replyByPhrase_([dl.shortlistBy, dl.interviewBy, dl.approveBy]),
+          LateNote: late ? lateNote_(p.month + " " + p.year, closeTs) : "" }, replyableThread_(th, origin.email));
         recordAck_(key); quota--; h.acked++;
         if(ok) mailLogs.push({ cid: row.CandidateId, mail: { ts: Date.now(), key: "ack", name: "Application acknowledgement", to: origin.email, ok: true, by: "Intake" } });
       }
     }catch(e){
       h.errors++; h.err = String(e && e.message || e).slice(0, 300);
-      try{ label_(th, "Status/Error"); }catch(x){}
+      try{ label_(th, LBL.problem); recordProblem_(th, e); }catch(x){}
     }
   }
   try{
     withStore_(st => {
       syncSheetToStore_(st, sh);
+      Object.keys(folderLinks).forEach(cid => { const c = st.candidates[cid];
+        if(c && folderLinks[cid] && c.filesFolder !== folderLinks[cid]){ applyChange(c, "filesFolder", folderLinks[cid], Date.now()); bump_(st, c); } });
       mailLogs.forEach(m => { const c = st.candidates[m.cid]; if(c){ c.mails.push(m.mail); bump_(st, c); } });
       applyCorrespondence_(st, corr);
     });
@@ -364,7 +376,7 @@ function processReplies_(snap, folder, counselEmails, corr, h, t0){
       const item = { msgId: id, ts: m.getDate().getTime(), subject: cell_(subject, 200), text: fresh, threadId: th.getId(),
         link: gmailLink_(th.getId()), files: [], intent: heuristicIntent_(subject + "\n" + fresh, atts), handled: false, needsAi: true };
       const coh = snap.cohorts[c.cohortId] || {};
-      const sub = cohortFolder_(folder, coh.label || "", { month: coh.month || "Unknown", year: coh.year || "" });
+      const sub = candidateFolder_(cohortFolder_(folder, coh.label || "", { month: coh.month || "Unknown", year: coh.year || "" }), c.name, c.email);
       atts.forEach(a => {
         const n = (a.getName() || "").toLowerCase();
         let slot = "other";
@@ -372,7 +384,7 @@ function processReplies_(snap, folder, counselEmails, corr, h, t0){
         else if(/(aadh?aar|pan[ _-]?card|passport|voter|driving|licen[cs]e|govt|government|identity|(^|[^a-z])id([^a-z]|$))/.test(n)) slot = "govtid";
         else if(/(^|[^a-z])(cv|resume|résumé|curriculum)/.test(n)) slot = "cv";
         else if(/(^|[^a-z])(cover|motivation)/.test(n)) slot = "cover";
-        const f = sub.createFile(a.copyBlob()).setName((c.name || from) + " - " + slot + " - " + a.getName());
+        const f = sub.createFile(a.copyBlob()).setName((KIND_LABEL[slot] || "Attachment") + " — " + safeName_(a.getName()));
         shareFile_(f, (slot === "nda" || slot === "govtid") ? "private" : slot);
         item.files.push({ slot, name: a.getName(), url: f.getUrl() }); h.docs++;
       });
@@ -432,12 +444,37 @@ function resolveFlag_(c, type, by, now){
   if(f){ f.resolved = true; f.resolvedBy = by; f.resolvedAt = now; f.ts = now; }
 }
 
-/* ------------------------------ Drive files ----------------------------- */
+/* ------------------------------ Drive files -----------------------------
+ * Cohort Files / 2026-12 December / Aarav Mehta (aarav@example.com) / CV — CV_Aarav.pdf
+ * One folder per candidate: their papers stay together, the whole folder can be opened or shared in one go,
+ * and a month with two hundred applicants is no longer one flat list of six hundred files.
+ */
 function cohortFolder_(root, label, p){
   const mi = monthIndex(p.month);
   const name = mi > -1 ? (p.year + "-" + String(mi + 1).padStart(2, "0") + " " + MONTHS[mi]) : "Other";
-  const it = root.getFoldersByName(name);
-  return it.hasNext() ? it.next() : root.createFolder(name);
+  return subFolder_(root, name);
+}
+function subFolder_(parent, name){
+  const it = parent.getFoldersByName(name);
+  return it.hasNext() ? it.next() : parent.createFolder(name);
+}
+function safeName_(s){ return String(s == null ? "" : s).replace(/[\\\/\[\]\*\?:]+/g, " ").replace(/\s+/g, " ").trim(); }
+/** The candidate's own folder inside the month. Named so it stays unique even if two people share a name. */
+function candidateFolder_(monthFolder, name, email){
+  const who = safeName_(name).slice(0, 60) || "Candidate";
+  const mail = safeName_(email).toLowerCase();
+  return subFolder_(monthFolder, mail ? (who + " (" + mail + ")") : who);
+}
+/** The first of these dates still to come, so an acknowledgement never promises a date that has passed. */
+function nextFuture_(list){
+  const now = Date.now();
+  const hit = (list || []).filter(t => t && t > now).sort((a, b) => a - b);
+  return hit.length ? hit[0] : 0;
+}
+function lateNote_(label, closeTs){
+  return "One thing to be straight with you about: applications for " + label + " closed on " + fmtDateIST(closeTs) +
+    ", and yours reached us after that. We will still read it. If a seat opens up for " + label + " we will come back to you, " +
+    "and otherwise we will consider you for the month after — do tell us if that works for you.";
 }
 function effectiveSharing_(){ return (FILE_SHARING === "team" && TEAM_EMAILS.length) ? "team" : "link"; }
 function shareFile_(f, kind){
@@ -446,18 +483,20 @@ function shareFile_(f, kind){
     else f.setSharing(DriveApp.Access.PRIVATE, DriveApp.Permission.NONE);
   }catch(e){}
 }
+const KIND_LABEL = { cv: "CV", cover: "Cover letter", nda: "NDA", govtid: "Govt ID", other: "Attachment", email: "Application email" };
 function saveAttachments_(msg, folder, who, p){
   const out = { cv: "", cover: "", nda: "", other: "", names: [] };
   msg.getAttachments({ includeInlineImages: false }).forEach(a => {
     if(/^image\//.test(a.getContentType()) && a.getSize() < 20000) return;
     const n = (a.getName() || "").toLowerCase();
-    const f = folder.createFile(a.copyBlob()).setName(who + " - " + p.month + " " + p.year + " - " + a.getName());
     out.names.push(a.getName());
     let kind = "other";
     if(/(^|[^a-z])(nda|non[ _-]?disclos)/.test(n)) kind = "nda";
     else if(/(^|[^a-z])(cover|motivation|statement[ _-]?of[ _-]?purpose|sop[^a-z])|(^|[^a-z])cl[ _.-]/.test(n)) kind = "cover";
     else if(/(^|[^a-z])(cv|resume|résumé|curriculum|bio[ _-]?data)([^a-z]|$)/.test(n)) kind = "cv";
     else if(!out.cv) kind = "cv";
+    // The file already sits in this candidate's own folder inside the month, so the name only has to say what it is.
+    const f = folder.createFile(a.copyBlob()).setName(KIND_LABEL[kind] + " — " + safeName_(a.getName()));
     shareFile_(f, kind === "nda" ? "private" : kind);
     const url = f.getUrl();
     if(kind === "other") out.other = out.other ? out.other + " , " + url : url;
@@ -469,7 +508,7 @@ function saveBodyPdf_(msg, folder, who, p){
   const esc = s => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const html = "<h3>" + esc(msg.getSubject()) + "</h3><p><b>From:</b> " + esc(msg.getFrom()) + "<br><b>Date:</b> " + esc(msg.getDate()) +
     "</p><hr><div style='white-space:pre-wrap;font-family:Arial'>" + esc(fullBody_(msg)) + "</div>";
-  const f = folder.createFile(Utilities.newBlob(html, "text/html").getAs("application/pdf").setName(who + " - " + p.month + " " + p.year + " - Email.pdf"));
+  const f = folder.createFile(Utilities.newBlob(html, "text/html").getAs("application/pdf").setName("Application email.pdf"));
   shareFile_(f, "email");
   return f.getUrl();
 }
@@ -484,11 +523,82 @@ function applyFolderSharing_(folder){
     "; file access: " + (effectiveSharing_() === "team" ? "team only" : "anyone with the link for CV/cover/email PDF (IDs and NDAs private)");
 }
 
-/* ------------------------------ Gmail helpers --------------------------- */
+/* ------------------------------ Gmail labels ---------------------------
+ * One family, "Cohort/…", so the whole intake sits together in Gmail's sidebar and nothing clashes with
+ * labels you add yourself. Month labels are flat and start with the year-month, so they sort in date order.
+ * The old "Status/…" and "Career/…" labels from v23 still work: they are excluded from the search so nothing
+ * is re-processed, and migrateLabels() copies them across.
+ */
+const LBL = {
+  filed:    "Cohort/Filed",               // on a candidate record
+  reply:    "Cohort/Reply",               // a reply from someone already on file
+  needsFix: "Cohort/Needs fix",           // month unreadable; the applicant was asked to resend
+  notApp:   "Cohort/Not an application",  // invoice, newsletter, notice
+  duplicate:"Cohort/Duplicate",           // an older or repeated copy of something already on file
+  problem:  "Cohort/Problem"              // could not be processed — shown in the dashboard, with a Retry
+};
+const LBL_OLD = { "Status/New": "filed", "Status/Correspondence": "reply", "Status/Needs-fix": "needsFix",
+  "Status/Ignored": "notApp", "Status/Superseded": "duplicate", "Status/Error": "problem" };
 function label_(th, n){ th.addLabel(getLabel_(n)); }
+function unlabel_(th, n){ const l = GmailApp.getUserLabelByName(n); if(l) th.removeLabel(l); }
 function getLabel_(n){ return GmailApp.getUserLabelByName(n) || GmailApp.createLabel(n); }
-function applyMonthLabel_(th, p){ const mi = monthIndex(p.month); label_(th, "Career/" + p.track + "/" + p.year + "/" + String(mi + 1).padStart(2, "0") + " " + p.month); }
-function precreateLabels_(){ ["Status/New","Status/Needs-fix","Status/Superseded","Status/Ignored","Status/Error","Status/Correspondence"].forEach(getLabel_); }
+/** "Cohort/2026-12 December" — one flat label per intake month, plus "Cohort/Associate" for the associate track. */
+function monthLabel_(p){ const mi = monthIndex(p.month); return "Cohort/" + p.year + "-" + String(mi + 1).padStart(2, "0") + " " + MONTHS[mi]; }
+function applyMonthLabel_(th, p){ label_(th, monthLabel_(p)); if(p.track === "Associate") label_(th, "Cohort/Associate"); }
+function precreateLabels_(){ Object.keys(LBL).forEach(k => getLabel_(LBL[k])); }
+/** Every label that means "the intake has already dealt with this thread" — new scheme and old. */
+function handledLabels_(){ return Object.keys(LBL).map(k => LBL[k]).concat(Object.keys(LBL_OLD)); }
+function notHandledQuery_(){ return handledLabels_().map(n => '-label:"' + n + '"').join(" "); }
+/** One-off: give threads carrying a v23 label the matching new one. Safe to run again; stops after `budget` ms. */
+function migrateLabels_(budget){
+  const t0 = Date.now(); let moved = 0;
+  Object.keys(LBL_OLD).forEach(oldName => {
+    const neu = LBL[LBL_OLD[oldName]];
+    for(let page = 0; page < 20; page++){
+      if(Date.now() - t0 > (budget || 60000)) return moved;
+      const hit = GmailApp.search('label:"' + oldName + '" -label:"' + neu + '"', 0, 100);
+      if(!hit.length) break;
+      hit.forEach(th => { try{ label_(th, neu); moved++; }catch(e){} });
+      if(hit.length < 100) break;
+    }
+  });
+  return moved;
+}
+function migrateLabels(){ const n = migrateLabels_(240000); Logger.log("Copied " + n + " thread(s) onto the new Cohort/… labels. The old Status/… and Career/… labels can now be deleted in Gmail."); return n; }
+
+/* --------------------------- intake problems ---------------------------
+ * A thread the intake could not process used to get Status/Error and vanish: excluded from every later search,
+ * with nothing anywhere to say so. They are recorded here and shown on the dashboard's Review Desk, with a
+ * Retry that takes the label off so the next run picks the thread up again.
+ */
+function recordProblem_(th, err){
+  try{
+    const list = intakeProblems_();
+    const id = th.getId();
+    const m = th.getMessages(), last = m[m.length - 1];
+    const row = { threadId: id, subject: String(last.getSubject() || "").slice(0, 160), from: cleanEmail(last.getFrom()),
+      when: Date.now(), err: String(err && err.message || err).slice(0, 220), link: gmailLink_(id) };
+    const out = [row].concat(list.filter(x => x.threadId !== id)).slice(0, 50);
+    PropertiesService.getScriptProperties().setProperty("intake_problems", JSON.stringify(out));
+  }catch(e){}
+}
+function intakeProblems_(){ try{ return JSON.parse(PropertiesService.getScriptProperties().getProperty("intake_problems") || "[]"); }catch(e){ return []; } }
+function clearProblem_(threadId){
+  const list = intakeProblems_().filter(x => x.threadId !== threadId);
+  PropertiesService.getScriptProperties().setProperty("intake_problems", JSON.stringify(list));
+}
+/** Dashboard action: take the Problem label off these threads so the next intake run tries them again. */
+function retryIntake_(p){
+  const ids = (p.ids || []).slice(0, 50); let n = 0;
+  ids.forEach(id => {
+    try{
+      const th = GmailApp.getThreadById(id);
+      if(th){ unlabel_(th, LBL.problem); unlabel_(th, "Status/Error"); n++; }
+      clearProblem_(id);
+    }catch(e){}
+  });
+  return { ok: true, retried: n };
+}
 function ackSheet_(){
   const ss = SpreadsheetApp.openById(SHEET_ID);
   let sh = ss.getSheetByName("Acked"); if(!sh){ sh = ss.insertSheet("Acked"); sh.appendRow(["Key", "When"]); }
@@ -500,7 +610,7 @@ function recordAck_(k){ if(_ackSet) _ackSet[k] = 1; ackSheet_().appendRow([k, ne
 
 const FALLBACK_TEMPLATES = {
   ack: { subject: "We have received your application — Chambers of Bharat Chugh",
-    body: "Dear {{Name}},\n\nThank you for writing to us — your application for the {{Month}} {{Role}} has reached the Chambers of Bharat Chugh and has been logged for review. You will hear from us on the outcome by {{ShortlistDate}}.\n\nWarm regards,\nThe Chambers of Bharat Chugh" },
+    body: "Dear {{Name}},\n\nThank you for writing to us — your application for the {{Month}} {{Role}} has reached the Chambers of Bharat Chugh and has been logged for review.\n\n{{LateNote}}\nYou will hear from us on the outcome {{ReplyBy}}.\n\nWarm regards,\nThe Chambers of Bharat Chugh" },
   needsfix_internship: { subject: "A quick fix needed on your application — Chambers of Bharat Chugh",
     body: "Dear {{Name}},\n\nThank you for writing to us. We could not read the month you are applying for from your email.\n\nPlease send a FRESH email (a reply to this note will not be processed) with the subject exactly as:\nCareer - Internship for [Month] [Year]   (e.g. Career - Internship for September 2026)\n\nWarm regards,\nThe Chambers of Bharat Chugh" },
   needsfix_associate: { subject: "A quick fix needed on your application — Chambers of Bharat Chugh",
@@ -523,7 +633,8 @@ function sendTemplate_(st, key, to, map, thread){
   const t = list.find(x => x.key === key) || FALLBACK_TEMPLATES[key];
   if(!t) return false;
   try{
-    const subject = fillTokens(t.subject, map), body = fillTokens(t.body, map);
+    const subject = fillTokens(t.subject, map);
+    const body = fillTokens(t.body, map).replace(/\n{3,}/g, "\n\n");   // an empty optional line leaves no gap
     if(thread && thread.reply) thread.reply(body, { name: "The Chambers of Bharat Chugh", subject: subject });
     else GmailApp.sendEmail(to, subject, body, { name: "The Chambers of Bharat Chugh" });
     return true;

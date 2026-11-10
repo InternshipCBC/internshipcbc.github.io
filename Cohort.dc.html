@@ -766,6 +766,30 @@ th{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;
 
       <sc-if value="{{ aiShowReview }}">
         <div>
+          <sc-if value="{{ hasQueue }}">
+            <div class="card" style="margin-bottom:12px">
+              <div class="card-h"><span><i class="ph ph-sort-ascending" style="color:var(--ac)"></i> The reading order</span><span class="small muted" style="font-weight:500">{{ queueNote }}</span></div>
+              <div class="card-b" style="padding-top:8px;padding-bottom:8px">
+                <sc-for list="{{ queueRows }}" as="q">
+                  <div class="chk">
+                    <span style="{{ q.pos }}">{{ q.n }}</span>
+                    <div class="grow"><b>{{ q.label }}</b> <span class="muted">{{ q.detail }}</span></div>
+                    <span style="{{ q.lateStyle }}">{{ q.lateLabel }}</span>
+                    <button onClick="{{ q.go }}" class="btn btn-s">Open</button>
+                  </div>
+                </sc-for>
+                <div class="foot">{{ queueFoot }}</div>
+              </div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ hasProblems }}">
+            <div class="banner b-err" style="align-items:center">
+              <i class="ph ph-warning-octagon" style="font-size:17px;flex-shrink:0"></i>
+              <div class="grow"><b>{{ problemCount }} email(s) the intake could not process.</b> <span>They are labelled Cohort/Problem in Gmail and are not on anyone's record. Retry puts them back in the queue.</span></div>
+              <button onClick="{{ showProblems }}" class="btn btn-s">See them</button>
+              <button onClick="{{ retryProblems }}" disabled="{{ retryBusy }}" class="btn btn-s btn-w"><i class="ph ph-arrow-clockwise"></i> {{ retryLabel }}</button>
+            </div>
+          </sc-if>
           <p class="small muted" style="margin:0 0 12px">{{ aiReviewIntro }}</p>
           <sc-if value="{{ aiRevBulkOn }}">
             <div class="row" style="padding:10px 16px;background:var(--acL);border:1.5px solid var(--ac);border-radius:9px;margin-bottom:12px">
@@ -1255,7 +1279,9 @@ th{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;
               <sc-if value="{{ d.showRef }}"><div class="full"><label>Referred by</label><input list="co-referrers" value="{{ d.referredBy }}" onInput="{{ d.onRef }}"></div></sc-if>
             </div>
             <div class="box">
-              <div class="row" style="margin-bottom:11px"><div class="sect grow" style="margin:0"><i class="ph ph-folder-open"></i> Documents</div><button onClick="{{ d.onCheckFiles }}" class="btn btn-s" disabled="{{ d.checkBusy }}"><i class="ph ph-shield-check"></i> {{ d.checkLabel }}</button></div>
+              <div class="row" style="margin-bottom:11px"><div class="sect grow" style="margin:0"><i class="ph ph-folder-open"></i> Documents</div>
+                <sc-if value="{{ d.filesFolder }}"><a href="{{ d.filesFolder }}" target="_blank" rel="noopener" class="btn btn-s" title="Open this candidate's folder in Drive"><i class="ph ph-folder-open"></i> Their folder</a></sc-if>
+                <button onClick="{{ d.onCheckFiles }}" class="btn btn-s" disabled="{{ d.checkBusy }}"><i class="ph ph-shield-check"></i> {{ d.checkLabel }}</button></div>
               <sc-for list="{{ d.docs }}" as="f">
                 <div style="margin-bottom:11px">
                   <label>{{ f.label }} <span style="{{ f.statusStyle }}">{{ f.status }}</span></label>
@@ -1538,7 +1564,7 @@ class Component extends DCLogic {
     compose:null, questions:{}, qBusy:'', digestDraft:'',
     setTab:'sync', pbTab:'templates', pbSeg:'', anScope:'this', noteDraft:'', optDraft:{}, noReplyDraft:'', navOpen:false,
     syncing:false, diag:null, diagBusy:false, tokenShow:false, repair:null, repairBusy:false, fileChecks:{}, checkBusy:false,
-    revRound:'', scripts:null, rev:0 };
+    revRound:'', scripts:null, retryBusy:false, rev:0 };
 
   UI_KEYS=['trackScope','page','activeCohortId','cohYear','cohStatus','cohScope','pipeTab','facet','sortKey','sortDir','chips','ivTab','apprTab','setTab','pbTab','anScope','aiTab'];
   PAGES=['cohorts','overview','pipeline','applied','shortlisted','interviews','approvals','onboarding','running','extensions','analytics','ai','timeline','playbook','settings'];
@@ -2152,7 +2178,7 @@ class Component extends DCLogic {
       r.onload=async()=>{
         this.flash('Uploading "'+f.name+'"…');
         try{ if(this.hasDirty()) await this.syncNow(true);
-          const res=await this.api('uploadFile',{id,slot,name:f.name,mime:f.type||'application/octet-stream',dataBase64:String(r.result).split(',')[1]||'',who:c.name||'Candidate',month:(this.coh(c.cohortId)||{}).label||'',by:this.who()},{timeout:180000});
+          const res=await this.api('uploadFile',{id,slot,name:f.name,mime:f.type||'application/octet-stream',dataBase64:String(r.result).split(',')[1]||'',who:c.name||'Candidate',email:c.email||'',month:(this.coh(c.cohortId)||{}).label||'',by:this.who()},{timeout:180000});
           const field=res.field||{cv:'cvUrl',cover:'clUrl',nda:'ndaUrl',govtid:'govtIdUrl',other:'otherUrl'}[slot];
           const cc=this.cand(id); if(cc){ const v=(field==='otherUrl'&&cc.otherUrl)?cc.otherUrl+' , '+res.url:res.url; this.C.applyChange(cc,field,v,this.now()); this.log(cc,'Uploaded '+slot+': '+f.name); }
           this.changed('Uploaded — link attached','ok');
@@ -2466,6 +2492,18 @@ class Component extends DCLogic {
     }catch(e){ this.flash('AI run failed: '+e.message,'err'); }
     this.setState({aiRunBusy:false});
   }
+  /** Put the threads the intake choked on back in the queue: the script takes the Problem label off them. */
+  async retryIntakeProblems(list){
+    if(!this.apiUrl()){ this.flash('Connect the shared data first','warn'); return; }
+    const ids=(list||[]).map(x=>x.threadId).filter(Boolean);
+    if(!ids.length){ this.flash('Nothing to retry'); return; }
+    this.setState({retryBusy:true});
+    try{ const r=await this.api('retryIntake',{ids},{timeout:60000});
+      this._aiHealthAt=0; await this.refreshAiHealth(true);
+      this.flash('Put '+(r.retried||0)+' email(s) back in the queue — the intake picks them up within ten minutes','ok');
+    }catch(e){ this.flash('Could not retry: '+e.message,'err'); }
+    this.setState({retryBusy:false});
+  }
   resolveFlag(c,f,note,silent){ const t=this.now(); c.aiFlags=c.aiFlags.map(x=>x.id===f.id?Object.assign({},x,{resolved:true,resolvedBy:this.who(),resolvedAt:t,ts:t,note:note||''}):x);
     this.C.applyChange(c,'aiFlagsTs',t,t); this.log(c,'Flag resolved: '+(note||f.type)); if(!silent) this.changed('Resolved'); else this.markDirty('candidates',c.id); }
   acceptAi(c,quiet){ const a=c.aiSuggest; if(!a||!a.rubric) return; const t=this.now();
@@ -2588,6 +2626,14 @@ class Component extends DCLogic {
       title='AI is on.'; body=ai.info+' · reads CVs: '+(ai.canReadFiles?'yes':'no (turn on the Drive API service)')+(ago!=null?(' · last run '+(ago<1?'just now':ago+' min ago')+(l.vetted!=null?(': read '+l.vetted):'')+(l.err?(' — '+l.err):'')):'')+' · Google time today '+ai.budgetMin+'/90 min';
       if(l.err&&!l.vetted){ cls='banner b-warn'; } }
     else body='Checking…';
+    // The reading order, straight from the script, so it is obvious which month is being worked on.
+    const queue=(h.queue||[]).filter(m=>m.applied||m.unread);
+    const problems=h.problems||[];
+    const queueRows=queue.map((m,i)=>({ n:String(i+1), label:m.label,
+      pos:'display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;flex-shrink:0;font-size:10.5px;font-weight:800;background:'+(i===0?'var(--acG)':'var(--sf2)')+';color:'+(i===0?'#fff':'var(--t2)'),
+      detail:m.unread?(m.unread+' of '+m.applied+' still to be read'):(m.applied+' waiting for your decision · all read'),
+      lateLabel:m.late?(m.late+' after close'):'', lateStyle:m.late?this.pill('var(--wnL)','var(--wn)'):'display:none',
+      go:()=>this.setState({activeCohortId:m.id,aiTab:'review',sel:[],ivSel:[],runSel:[]}) }));
     const sel=new Set(this.state.aiRevSel||[]);
     const revRows=rev.map(c=>{ const a=c.aiSuggest, on=sel.has(c.id), sc=this.aiScoreOf(c), you=this.score(c), fl=this.openFlags(c);
       return Object.assign({ name:c.name||'(unnamed)', sub:[c.year,c.college].filter(Boolean).join(' · ')||c.email, onOpen:()=>this.openCand(c.id,'app'),
@@ -2622,6 +2668,13 @@ class Component extends DCLogic {
       aiRunLabel:this.state.aiRunBusy?'Reading…':(aiOn?'Run now':'AI off'), aiRunDisabled:!!this.state.aiRunBusy||!aiOn,
       aiTabs:this.tab([['review','To review'],['flags','Flags'],['replies','Replies'],['chat','Assistant'],['reports','Activity'],['how','How it works']],tab,v=>this.setState({aiTab:v}),v=>v==='review'?rev.length:(v==='flags'?openFlagCount:(v==='replies'?replyCount:0))),
       aiShowReview:tab==='review', aiShowFlags:tab==='flags', aiShowReplies:tab==='replies', aiShowChat:tab==='chat', aiShowReports:tab==='reports', aiShowHow:tab==='how',
+      hasQueue:queueRows.length>0, queueRows,
+      queueNote:'The soonest month is finished before the next one is started',
+      queueFoot:'The AI reads about '+(h.ai&&h.ai.batch||8)+' applications every 15 minutes, always from the top of this list. A month only drops off once every application in it has been read.',
+      hasProblems:problems.length>0, problemCount:problems.length, retryBusy:!!this.state.retryBusy,
+      retryLabel:this.state.retryBusy?'Retrying…':'Retry all',
+      showProblems:()=>this.ask('Emails the intake could not process',problems.map(x=>'• '+(x.subject||'(no subject)')+'\n  from '+(x.from||'—')+' · '+this.fmtDT(x.when)+'\n  '+(x.err||'')).join('\n\n'),null,{okLabel:'Close',info:true,wide:true}),
+      retryProblems:()=>this.retryIntakeProblems(problems),
       aiReviewIntro:'Every application still at Applied in '+((this.cohort||{}).label||'this month')+'. Rate it on the record, then Shortlist or set it aside — neither sends an email.'+(aiOn?' The AI’s recommendation is shown first where it has read one.':''),
       aiRevRows:revRows, aiRevEmpty:!revRows.length, aiRevEmptyMsg:'Nothing waiting — every application for this month has been decided.',
       aiRevAll:()=>this.setState({aiRevSel:allSel?[]:ids}), aiRevAllStyle:this.box(allSel), aiRevAllMark:allSel?'✓':'', aiRevBulkOn:selList.length>0, aiRevSelCount:selList.length,
@@ -3361,7 +3414,7 @@ class Component extends DCLogic {
       pbTabs:[['templates','Email templates'],['whatsapp','WhatsApp'],['invite','Invitation posts'],['gmail','Gmail intake'],['script','Apps Script']].map(t=>({label:t[1],go:()=>this.setState({pbTab:t[0]}),style:this.segStyle(pb===t[0])})),
       pbTemplates:pb==='templates', pbWhatsapp:pb==='whatsapp', pbInvite:pb==='invite', pbGmail:pb==='gmail', pbScript:pb==='script',
       pbSegTabs:[['intern','Interns'],['associate','Associates']].map(t=>({label:t[1],go:()=>this.setState({pbSeg:t[0]}),style:this.segStyle(seg===t[0])})),
-      pbTokens:['Name','Month','Role','Mode','InterviewMode','GrantMode','Date','Time','InterviewLink','ShortlistDate','InterviewDate','ApproveDate','StartDate','Duration','PreReads','Reporting','ReportingDetails','WhatsAppLink','Reason','ExtensionMonth','StipendAmount','StipendLine','FirstName','MissingDocs'].map(x=>'{{'+x+'}}'),
+      pbTokens:['Name','Month','Role','Mode','InterviewMode','GrantMode','Date','Time','InterviewLink','ShortlistDate','ReplyBy','InterviewDate','ApproveDate','StartDate','Duration','PreReads','Reporting','ReportingDetails','WhatsAppLink','Reason','LateNote','ExtensionMonth','StipendAmount','StipendLine','FirstName','MissingDocs'].map(x=>'{{'+x+'}}'),
       pbGroups:order.map(g=>({title:g,items:items.filter(i=>i.group===g)})).filter(g=>g.items.length),
       handbookUrl:of.handbook||'', ndaFormUrl:of.nda||'',
       onHandbook:(e)=>this.setS('offerFiles',Object.assign({},of,{handbook:e.target.value.trim()})), onNdaForm:(e)=>this.setS('offerFiles',Object.assign({},of,{nda:e.target.value.trim()})),
@@ -3523,6 +3576,7 @@ class Component extends DCLogic {
         showRef:c.source==='Reference'||!!c.referredBy, referredBy:c.referredBy, onRef:F('referredBy'), notes:c.notes, onNotes:F('notes'),
         docs:[mkDoc('CV / Résumé','cvUrl','cv'),mkDoc('Cover letter','clUrl','cover'),mkDoc('Email as PDF (saved by the intake)','emailPdfUrl','')]
           .concat(otherRows,[mkDoc('Govt ID (Aadhaar may be masked)','govtIdUrl','govtid'),mkDoc('Signed NDA','ndaUrl','nda')]),
+        filesFolder:c.filesFolder?this.fileHref(c.filesFolder):'',
         onCheckFiles:()=>this.checkFiles(c), checkBusy:this.state.checkBusy, checkLabel:this.state.checkBusy?'Checking…':'Check files',
         filesHint:'Files open in your browser’s Google account'+(this._driveUser?(' ('+this._driveUser+')'):'')+'. "Can’t be accessed" usually means that account has no access — set "Open files as" in Settings → Sync, or press Check files.',
         ...(()=>{ const a=c.aiSuggest||null, has=!!(a&&a.recommendation), sc=has?a.score:null, rp=this.recPill(a);

@@ -82,7 +82,7 @@ export function normalizeCohort(c){
 export function normalizeCandidate(c){
   if(!c) return c;
   const str = ['key','cohortId','name','email','phone','track','grantedMode','processMode','year','college','city','source','referredBy',
-    'pqe','barEnrol','gradYear','currentRole','cvUrl','clUrl','emailPdfUrl','otherUrl','ndaUrl','govtIdUrl','stage','outcome','rejectReason','rejectedBy','notes','ivConfirm'];
+    'pqe','barEnrol','gradYear','currentRole','cvUrl','clUrl','emailPdfUrl','otherUrl','ndaUrl','govtIdUrl','filesFolder','stage','outcome','rejectReason','rejectedBy','notes','ivConfirm'];
   str.forEach(k => { if(c[k] == null) c[k] = ''; });
   if(c.preferredMode == null || c.preferredMode === undefined) c.preferredMode = c.mode === 'online' ? 'online' : (c.mode === 'offline' ? 'offline' : '');
   if(c.program == null) c.program = '';
@@ -328,11 +328,17 @@ export function buildTokens(c, coh, S, extra){
     InterviewLink: iv.link || (c.processMode === 'online' ? '(link to follow)' : (S.reportingDetails || '')),
     Date: iv.date ? fmtDateIST(istTs(iv.date)) : 'TBC', Time: fmtTime12(iv.slot),
     ShortlistDate: fmtDateIST(dl.shortlistBy), InterviewDate: fmtDateIST(dl.interviewBy), ApproveDate: fmtDateIST(dl.approveBy),
+    ReplyBy: replyByPhrase_([dl.shortlistBy, dl.interviewBy, dl.approveBy]),
     StartDate: fmtDateIST(ob.startDate), Duration: ob.duration || 'a minimum of four weeks', PreReads: ob.preReads || 'the CBC Handbook (attached)',
     Reporting: (ob.reporting || S.reportingDetails || '') + (ob.mapsLink ? ('\nLocation: ' + ob.mapsLink) : ''), ReportingDetails: S.reportingDetails || '',
     WhatsAppLink: ob.whatsapp || '(group link to follow)', Reason: c.rejectReason || reasons[0] || 'a very high volume of strong applications this month',
     MissingDocs: extra.missing || [(!c.cvUrl ? 'your CV' : ''), (!c.clUrl ? 'a short cover letter' : '')].filter(Boolean).join(' and ') || 'the missing documents'
   };
+  // An application that arrived after the month closed is still answered; this line says so, and is empty otherwise.
+  map.LateNote = (extra.late != null ? extra.late : !!c.late)
+    ? ('One thing to be straight with you about: applications for ' + (coh.label || 'this month') + ' had already closed when yours reached us. ' +
+       'We will still read it. If a seat opens up for ' + (coh.label || 'that month') + ' we will come back to you, and otherwise we will consider you for the month after.')
+    : '';
   const x = extra.ext || (c.extensions || []).filter(e => e.status === 'approved').slice(-1)[0];
   map.ExtensionMonth = x ? (x.targetLabel || 'the coming month') : 'the coming month';
   map.ExtensionMonths = map.ExtensionMonth;
@@ -340,6 +346,13 @@ export function buildTokens(c, coh, S, extra){
   map.StipendLine = x && x.stipend === 'yes' ? ('For the extended period you will receive a stipend of ' + map.StipendAmount + ' per month.') : '';
   return map;
 }
+/** "by 21 Nov 2026" when a deadline is still to come, otherwise a phrase that is still true. */
+export function replyByPhrase_(list){
+  const now = Date.now();
+  const next = (list || []).filter(t => t && t > now).sort((a, b) => a - b)[0];
+  return next ? ('by ' + fmtDateIST(next)) : 'as soon as we have read it';
+}
+
 /** Default automation switches (the dashboard can change every one of them). */
 export function defaultAutomation(){
   return { aiFill: true, aiScore: true, autoShortlist: false, autoShortlistMin: 80, autoRejectIneligible: false,

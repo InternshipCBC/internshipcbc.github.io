@@ -51,6 +51,10 @@ function route_(action, p, isPost){
     case "calendarInvite": if(!isPost) break; return calendarInvite_(p);
     case "replyThread": if(!isPost) break; return replyThread_(p);
     case "sheetExport": if(!isPost) break; return sheetExport_(p);
+    case "retryIntake": if(!isPost) break; return retryIntake_(p);
+    case "runIntake":   if(!isPost) break; try{ processInbox(); }catch(e){ return { ok: false, error: String(e && e.message || e) }; }
+                        return Object.assign({ ok: true }, getHealth_("intake") || {});
+    case "migrateLabels": if(!isPost) break; return { ok: true, moved: migrateLabels_(120000) };
   }
   return { ok: false, error: "unknown action: " + action };
 }
@@ -274,8 +278,9 @@ function uploadFile_(p){
   let sub = folder;
   const m = String(p.month || "").split(" ");
   if(monthIndex(m[0]) > -1 && parseInt(m[1], 10)) sub = cohortFolder_(folder, p.month, { month: MONTHS[monthIndex(m[0])], year: parseInt(m[1], 10) });
+  sub = candidateFolder_(sub, p.who || "Candidate", p.email || "");
   const blob = Utilities.newBlob(Utilities.base64Decode(p.dataBase64 || ""), p.mime || "application/octet-stream", p.name || "upload");
-  const f = sub.createFile(blob).setName((p.who || "Candidate") + " - " + (p.month || "") + " - " + (p.slot || "file") + " - " + (p.name || "upload"));
+  const f = sub.createFile(blob).setName((KIND_LABEL[p.slot] || "Attachment") + " — " + safeName_(p.name || "upload"));
   shareFile_(f, p.slot === "cover" ? "cover" : (p.slot === "cv" ? "cv" : (p.slot === "other" ? "other" : "private")));
   const url = f.getUrl();
   withStore_(st => {
@@ -284,6 +289,7 @@ function uploadFile_(p){
       const now = Date.now();
       const v = (field === "otherUrl" && c.otherUrl) ? c.otherUrl + " , " + url : url;
       applyChange(c, field, v, now);
+      try{ const fu = sub.getUrl(); if(fu && c.filesFolder !== fu) applyChange(c, "filesFolder", fu, now); }catch(e){}
       c.hist.push({ ts: now, by: p.by || "—", txt: "Uploaded " + (p.slot || "file") + ": " + (p.name || "") });
       bump_(st, c);
     }
@@ -388,6 +394,9 @@ function healthReport_(){
     add(!!h.ok && !(k === "intake" && age > 90), "Last " + pair[1] + " run", d);
   });
   out.webAppUrl = (function(){ try{ return ScriptApp.getService().getUrl(); }catch(e){ return ""; } })();
+  // What is waiting, month by month, and anything the intake could not process — both shown on the Review Desk.
+  try{ out.queue = (typeof aiQueueByMonth_ === "function") ? aiQueueByMonth_(loadStore_()) : []; }catch(e){ out.queue = []; }
+  try{ out.problems = intakeProblems_(); }catch(e){ out.problems = []; }
   out.ai = { enabled: aiEnabled_(), info: aiProviderInfo_(), gemini: keySet_(GEMINI_API_KEY), groq: keySet_(GROQ_API_KEY), provider: AI_PROVIDER,
     canReadFiles: typeof Drive !== "undefined" || keySet_(GEMINI_API_KEY), driveService: typeof Drive !== "undefined", calendarService: typeof Calendar !== "undefined",
     last: getHealth_("ai"), budgetMin: Math.round(budgetUsed_() / 60000) };
