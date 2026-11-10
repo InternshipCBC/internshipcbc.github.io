@@ -768,7 +768,9 @@ th{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;
         <div>
           <sc-if value="{{ hasQueue }}">
             <div class="card" style="margin-bottom:12px">
-              <div class="card-h"><span><i class="ph ph-sort-ascending" style="color:var(--ac)"></i> The reading order</span><span class="small muted" style="font-weight:500">{{ queueNote }}</span></div>
+              <div class="card-h"><span><i class="ph ph-sort-ascending" style="color:var(--ac)"></i> The reading order</span>
+                <span class="row" style="gap:8px"><span class="small muted" style="font-weight:500">{{ queueNote }}</span>
+                <button onClick="{{ runIntakeNow }}" disabled="{{ intakeBusy }}" title="Read the inbox now instead of waiting for the next ten-minute run" class="btn btn-s"><i class="ph ph-tray-arrow-down"></i> {{ intakeLabel }}</button></span></div>
               <div class="card-b" style="padding-top:8px;padding-bottom:8px">
                 <sc-for list="{{ queueRows }}" as="q">
                   <div class="chk">
@@ -1044,8 +1046,8 @@ th{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;
             <ol class="small muted" style="padding-left:18px;line-height:1.8">
               <li>At script.google.com open your project (e.g. "Cohort Engine"). Keep a note of the values in your old settings first.</li>
               <li>Make the files match the four below — same names — replacing everything in each. Delete any other old files.</li>
-              <li>In <b style="color:var(--tx)">Code.gs</b> fill in the SETTINGS block (Sheet ID, folder ID, token, Groq key, team emails). Save.</li>
-              <li>Choose <b style="color:var(--tx)">setup</b> in the toolbar → Run → approve access. Read the log it prints.</li>
+              <li>In <b style="color:var(--tx)">Code.gs</b> fill in the SETTINGS block (Sheet ID, folder ID, token, Gemini/Groq keys, team emails). Save.</li>
+              <li>Choose <b style="color:var(--tx)">setup</b> in the toolbar → Run → approve access. Read the log it prints: it carries anything in the old Applications tab across, writes the Sheet mirror, and copies the old Gmail labels onto the new ones.</li>
               <li>Deploy → Manage deployments → ✎ Edit → Version: <b style="color:var(--tx)">New version</b> → Deploy. (First time: Deploy → New deployment → Web app, Execute as Me, Anyone.)</li>
             </ol>
             <div class="row" style="margin-top:10px"><button onClick="{{ downloadScripts }}" class="btn btn-p"><i class="ph ph-download-simple"></i> Download all four files</button><span class="small muted">{{ scriptsNote }}</span></div>
@@ -1564,7 +1566,7 @@ class Component extends DCLogic {
     compose:null, questions:{}, qBusy:'', digestDraft:'',
     setTab:'sync', pbTab:'templates', pbSeg:'', anScope:'this', noteDraft:'', optDraft:{}, noReplyDraft:'', navOpen:false,
     syncing:false, diag:null, diagBusy:false, tokenShow:false, repair:null, repairBusy:false, fileChecks:{}, checkBusy:false,
-    revRound:'', scripts:null, retryBusy:false, rev:0 };
+    revRound:'', scripts:null, retryBusy:false, intakeBusy:false, rev:0 };
 
   UI_KEYS=['trackScope','page','activeCohortId','cohYear','cohStatus','cohScope','pipeTab','facet','sortKey','sortDir','chips','ivTab','apprTab','setTab','pbTab','anScope','aiTab'];
   PAGES=['cohorts','overview','pipeline','applied','shortlisted','interviews','approvals','onboarding','running','extensions','analytics','ai','timeline','playbook','settings'];
@@ -2492,6 +2494,20 @@ class Component extends DCLogic {
     }catch(e){ this.flash('AI run failed: '+e.message,'err'); }
     this.setState({aiRunBusy:false});
   }
+  /** Read the inbox now rather than waiting for the next ten-minute run. */
+  async runIntakeNow(){
+    if(!this.apiUrl()){ this.flash('Connect the shared data first (Settings → Sync)','warn'); return; }
+    if(this.state.intakeBusy) return;
+    this.setState({intakeBusy:true}); this.flash('Reading the inbox…');
+    try{ const r=await this.api('runIntake',{},{timeout:330000});
+      await this.syncNow(true); this._aiHealthAt=0; await this.refreshAiHealth(true);
+      const bits=[]; if(r.filed) bits.push(r.filed+' filed'); if(r.updated) bits.push(r.updated+' updated');
+      if(r.acked) bits.push(r.acked+' acknowledged'); if(r.replies) bits.push(r.replies+' repl(ies)');
+      if(r.needsFix) bits.push(r.needsFix+' asked to resend'); if(r.errors) bits.push(r.errors+' problem(s)');
+      this.flash(bits.length?('Inbox read — '+bits.join(', ')):'Inbox read — nothing new', r.errors?'warn':'ok');
+    }catch(e){ this.flash('Could not read the inbox: '+e.message,'err'); }
+    this.setState({intakeBusy:false});
+  }
   /** Put the threads the intake choked on back in the queue: the script takes the Problem label off them. */
   async retryIntakeProblems(list){
     if(!this.apiUrl()){ this.flash('Connect the shared data first','warn'); return; }
@@ -2669,6 +2685,7 @@ class Component extends DCLogic {
       aiTabs:this.tab([['review','To review'],['flags','Flags'],['replies','Replies'],['chat','Assistant'],['reports','Activity'],['how','How it works']],tab,v=>this.setState({aiTab:v}),v=>v==='review'?rev.length:(v==='flags'?openFlagCount:(v==='replies'?replyCount:0))),
       aiShowReview:tab==='review', aiShowFlags:tab==='flags', aiShowReplies:tab==='replies', aiShowChat:tab==='chat', aiShowReports:tab==='reports', aiShowHow:tab==='how',
       hasQueue:queueRows.length>0, queueRows,
+      runIntakeNow:()=>this.runIntakeNow(), intakeBusy:!!this.state.intakeBusy, intakeLabel:this.state.intakeBusy?'Reading the inbox…':'Check the inbox now',
       queueNote:'The soonest month is finished before the next one is started',
       queueFoot:'The AI reads about '+(h.ai&&h.ai.batch||8)+' applications every 15 minutes, always from the top of this list. A month only drops off once every application in it has been read.',
       hasProblems:problems.length>0, problemCount:problems.length, retryBusy:!!this.state.retryBusy,

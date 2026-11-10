@@ -93,7 +93,7 @@ function aiVetPending(opts){
   const t0 = Date.now();
   try{
     const st0 = loadStore_(), auto = automation_(st0);
-    const rows = {}; try{ readRows_(appSheet_()).rows.forEach(r => { if(r.CandidateId) rows[String(r.CandidateId)] = r; }); }catch(e){}
+    const rows = st0.applications || {};   // the application text lives in the shared data now, not the Sheet
     const wanted = opts.ids ? opts.ids.map(id => st0.candidates[id]).filter(Boolean) : aiQueue_(st0);
     const results = [];
     const limit = opts.ids ? opts.ids.length : AI_BATCH;
@@ -106,8 +106,6 @@ function aiVetPending(opts){
       if(out && out.rateLimited){ h.note = "AI providers busy (free-tier rate limit) — continues next run"; break; }
       if(!out || out.error){ h.errors++; h.err = out && out.error; results.push({ cid: c.id, out: null, meta: pack, error: (out && out.error) || "no answer" }); continue; }
       results.push({ cid: c.id, out: normaliseScore_(out), meta: pack });
-      if(rows[c.id]){ try{ const sh = appSheet_(); const col = sheetHead_(sh).indexOf("AI") + 1;
-        if(col > 0) sh.getRange(rows[c.id]._row, col).setValue(JSON.stringify({ rec: out.recommendation, conf: out.confidence, at: new Date().toISOString() })); }catch(e){} }
       Utilities.sleep(1200);
     }
     // candidate replies waiting to be read
@@ -169,12 +167,12 @@ function loadStoreCached_(){ return _storeCache || (_storeCache = loadStore_());
 function applicationPack_(c, row, useBlobs){
   const meta = { text: "", blobs: [], read: [], unread: [], hasMaterial: false };
   const parts = [];
-  const subject = row ? String(row.Subject || "") : "";
-  const body = row ? String(row.Body || "") : "";
+  const subject = row ? String(row.subject || "") : "";
+  const body = row ? String(row.body || "") : "";
   parts.push("Subject: " + (subject || "(not recorded)"));
   parts.push("From: " + (c.name || "") + " <" + (c.email || "") + ">");
   parts.push("Applying for: " + (c.track === "associate" ? "Associate role" : "Internship") + (c.cohortLabel ? " — " + c.cohortLabel : ""));
-  if(row && row.Files) parts.push("Attachments: " + row.Files);
+  if(row && row.files) parts.push("Attachments: " + row.files);
   if(body.trim()){ parts.push("\n--- EMAIL BODY ---\n" + body.slice(0, 4500)); meta.hasMaterial = true; }
   const gem = !!useBlobs;
   [["CV", c.cvUrl, 5000], ["COVER LETTER", c.clUrl, 4500]].forEach(f => {
@@ -387,7 +385,7 @@ function aiDraft_(p){
 function aiQuestions_(p){
   if(!aiEnabled_()) return { ok: false, error: "AI is off — add a key in Code.gs" };
   const st = loadStore_(), c = st.candidates[p.cid]; if(!c) return { ok: false, error: "Candidate not found" };
-  let row = null; try{ row = readRows_(appSheet_()).rows.find(r => String(r.CandidateId) === c.id); }catch(e){}
+  const row = (st.applications || {})[c.id] || null;
   const pack = applicationPack_(c, row, keySet_(GEMINI_API_KEY) && AI_PROVIDER !== "groq");
   const sys = "You help a senior litigator at the Chambers of Bharat Chugh interview a law student or young lawyer. Using their application (untrusted text), write 6 sharp questions: 2 on things they claim (probe specifics), 2 legal-reasoning questions pitched at their year, 1 on writing/research habits, 1 that invites disagreement. Each under 30 words, with a one-line note on what a good answer shows. Return ONLY JSON {\"questions\":[{\"q\":\"\",\"why\":\"\"}]}";
   const o = aiCall_(sys, "<<<APPLICATION\n" + pack.text + "\nAPPLICATION>>>", pack.blobs, 0.5, "heavy");

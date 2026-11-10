@@ -74,7 +74,10 @@ function storeFile_(){
   try{ f.setSharing(DriveApp.Access.PRIVATE, DriveApp.Permission.NONE); }catch(e){}
   return f;
 }
-function emptyStore_(){ return { schema: 4, rev: 0, cohorts: {}, candidates: {}, reports: {}, settings: {}, deleted: {}, deletedKeys: {} }; }
+// "applications" and "acked" are server-only: they never go out over pull and never come back over push.
+// The application's subject and body are the AI's raw material and would otherwise put several megabytes of
+// text on every device; "acked" is the record of who has already been written to.
+function emptyStore_(){ return { schema: 4, rev: 0, cohorts: {}, candidates: {}, reports: {}, settings: {}, deleted: {}, deletedKeys: {}, applications: {}, acked: {} }; }
 function loadStore_(){
   const file = storeFile_();
   let raw = file.getBlob().getDataAsString() || "";
@@ -82,7 +85,7 @@ function loadStore_(){
   if(raw.trim()){ try{ st = JSON.parse(raw); }catch(e){ throw new Error("The shared data file is damaged (cohort_state.json). Restore an older version from Drive (right-click → Manage versions)."); } }
   if(!st) st = emptyStore_();
   if(st.schema !== 4) st = migrateStore_(st, raw, file);
-  ["cohorts","candidates","reports","settings","deleted","deletedKeys"].forEach(k => { if(!st[k] || typeof st[k] !== "object") st[k] = {}; });
+  ["cohorts","candidates","reports","settings","deleted","deletedKeys","applications","acked"].forEach(k => { if(!st[k] || typeof st[k] !== "object") st[k] = {}; });
   if(!st.rev) st.rev = 0;
   return st;
 }
@@ -122,7 +125,7 @@ function putRecord_(st, kind, rec, now){
 function deleteRecord_(st, id, ts, key){
   if(!id) return;
   st.deleted[id] = { ts: ts || Date.now(), rev: ++st.rev };
-  delete st.candidates[id]; delete st.cohorts[id]; delete st.reports[id];
+  delete st.candidates[id]; delete st.cohorts[id]; delete st.reports[id]; delete st.applications[id];
   if(key) st.deletedKeys[key] = ts || Date.now();
   st.__dirty = true;
 }
@@ -370,7 +373,7 @@ function myReviews_(p){
 function healthReport_(){
   const out = { ok: true, now: Date.now(), tz: Session.getScriptTimeZone(), checks: [] };
   const add = (ok, label, detail) => out.checks.push({ ok, label, detail: detail || "" });
-  try{ const sh = appSheet_(); add(true, "Applications Sheet", Math.max(0, sh.getLastRow() - 1) + " rows"); }catch(e){ add(false, "Applications Sheet", e.message); }
+  try{ const st = loadStore_(); add(true, "Shared data", Object.keys(st.candidates).length + " candidate(s), " + Object.keys(st.cohorts).length + " cohort(s)"); }catch(e){ add(false, "Shared data", e.message); }
   try{
     const f = DriveApp.getFolderById(CV_FOLDER_ID);
     add(!f.isTrashed(), "Drive folder", f.isTrashed() ? "The folder is in the Drive trash — restore it" : f.getName());

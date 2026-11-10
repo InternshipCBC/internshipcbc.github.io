@@ -48,7 +48,7 @@ function setup(){
   const log = [];
   const say = s => { log.push(s); Logger.log(s); };
   checkConfig_(true).forEach(say);
-  const sh = appSheet_(); say("✓ Sheet opened: " + sh.getParent().getName() + " → tab '" + sh.getName() + "'");
+  const sh = appSheet_(); say("✓ Sheet opened: " + sh.getParent().getName());
   const folder = DriveApp.getFolderById(CV_FOLDER_ID); say("✓ Drive folder opened: " + folder.getName());
   if(folder.isTrashed()) say("✗ The Drive folder is IN THE TRASH — restore it from drive.google.com → Trash.");
   ScriptApp.getProjectTriggers().forEach(t => { if(OUR_TRIGGERS.indexOf(t.getHandlerFunction()) > -1) ScriptApp.deleteTrigger(t); });
@@ -57,8 +57,16 @@ function setup(){
   ScriptApp.newTrigger("morning").timeBased().everyDays(1).atHour(9).create();
   ScriptApp.newTrigger("nightly").timeBased().everyDays(1).atHour(2).create();
   say("✓ Timers: Gmail every 10 min" + (aiEnabled_() ? ", AI every 15 min" : " (AI off — no key)") + ", 9 AM digest & reminders, 2 AM clean-up");
-  const res = withStore_(st => syncSheetToStore_(st, sh));
-  say("✓ Shared data ready (" + res.total + " candidates; " + res.created + " created / " + res.linked + " linked from the Sheet)");
+  const res = withStore_(st => {
+    const done = !!st.legacyImportedAt;
+    if(done) return { total: Object.keys(st.candidates).length, created: 0, linked: 0, skipped: true };
+    const r = importLegacySheet_(st, sh);
+    st.legacyImportedAt = Date.now(); st.__dirty = true;
+    return r;
+  });
+  say(res.skipped ? ("✓ Shared data ready (" + res.total + " candidates)")
+    : ("✓ Shared data ready (" + res.total + " candidates; " + res.created + " brought across from the old Applications tab, " + res.linked + " linked)"));
+  try{ say("✓ Sheet mirror written: tab '" + MIRROR_TAB + "' (" + mirrorToSheet_() + " rows). Nothing reads the Sheet now — edit in the dashboard."); }catch(e){ say("! Could not write the Sheet mirror: " + e.message); }
   say(applyFolderSharing_(folder));
   precreateLabels_(); say("✓ Gmail labels ready (Cohort/Filed, Cohort/Reply, Cohort/Needs fix, Cohort/Not an application, Cohort/Duplicate, Cohort/Problem, plus one per month)");
   const moved = migrateLabels_(60000);
@@ -77,7 +85,8 @@ function diagnose(){
   const out = []; const say = s => { out.push(s); Logger.log(s); };
   say("Cohort server " + COHORT_SERVER_VERSION + " — " + new Date());
   checkConfig_(false).forEach(say);
-  try{ const sh = appSheet_(); say("✓ Sheet OK — " + Math.max(0, sh.getLastRow() - 1) + " application rows"); }catch(e){ say("✗ Sheet: " + e.message); }
+  try{ const st = loadStore_(); say("✓ Shared data OK — " + Object.keys(st.candidates).length + " candidate(s), " + Object.keys(st.cohorts).length + " cohort(s)"); }catch(e){ say("✗ Shared data: " + e.message); }
+  try{ say("✓ Sheet mirror: tab '" + MIRROR_TAB + "'"); }catch(e){ say("✗ Sheet: " + e.message); }
   try{
     const f = DriveApp.getFolderById(CV_FOLDER_ID);
     say((f.isTrashed() ? "✗ Folder is in the TRASH: " : "✓ Folder OK: ") + f.getName());
@@ -127,13 +136,11 @@ function budgetAdd_(ms){ try{ PropertiesService.getScriptProperties().setPropert
 function budgetLow_(){ return budgetUsed_() > 75 * 60000; }
 
 /* ------------------------------- sheet -------------------------------- */
+/** The old v23 intake ledger. Only the one-time import reads it; nothing writes it any more. */
 function appSheet_(){
   const ss = SpreadsheetApp.openById(SHEET_ID);
   let sh = ss.getSheetByName("Applications");
   if(!sh){ sh = ss.insertSheet("Applications"); sh.appendRow(SHEET_HEADERS); sh.setFrozenRows(1); }
-  const head = sh.getRange(1, 1, 1, Math.max(1, sh.getLastColumn())).getValues()[0].map(String);
-  const missing = SHEET_HEADERS.filter(h => head.indexOf(h) < 0);
-  if(missing.length) sh.getRange(1, head.filter(Boolean).length + 1, 1, missing.length).setValues([missing]);
   return sh;
 }
 function readRows_(sh){
@@ -157,20 +164,22 @@ function automation_(st){ return Object.assign(defaultAutomation(), getSetting_(
 function processInbox(){
   const t0 = Date.now();
   const h = { ts: t0, ok: true, filed: 0, updated: 0, needsFix: 0, ignored: 0, superseded: 0, late: 0, acked: 0, errors: 0, replies: 0, docs: 0 };
-  let sh, folder, snap;
-  try{ sh = appSheet_(); folder = DriveApp.getFolderById(CV_FOLDER_ID); snap = loadStore_(); }
-  catch(e){ health_("intake", { ok: false, err: "Cannot open the Sheet / Drive folder / shared data: " + e.message }); throw e; }
+  let folder, snap;
+  try{ folder = DriveApp.getFolderById(CV_FOLDER_ID); snap = loadStore_(); }
+  catch(e){ health_("intake", { ok: false, err: "Cannot open the Drive folder or the shared data: " + e.message }); throw e; }
   const counselEmails = (getSetting_(snap, "counsels", []) || []).map(c => cleanEmail(c.email)).filter(Boolean);
   const auto = automation_(snap);
   let quota = 0; try{ quota = MailApp.getRemainingDailyQuota(); }catch(e){}
-  const mailLogs = [], corr = [], folderLinks = {};
+  const mailLogs = [], corr = [], filings = [], ackKeys = [];
 
   // 1) Candidate replies and documents (NDA, ID, updated CV) — logged on their record, never filed as new applications.
   if(auto.logReplies !== false){ try{ processReplies_(snap, folder, counselEmails, corr, h, t0); }catch(e){ h.replyErr = String(e.message || e).slice(0, 200); } }
 
-  // 2) Applications.
-  const data = readRows_(sh);
-  const byKey = {}; data.rows.forEach(r => { if(r.Key) byKey[String(r.Key)] = r; });
+  // 2) Applications. What is already on file comes from the shared data — the single source of truth.
+  const byKey = {};
+  Object.keys(snap.candidates).forEach(id => { const c = snap.candidates[id]; if(!c.key) return;
+    byKey[String(c.key)] = { id: c.id, key: c.key, intakeTs: c.intakeTs || 0, cvUrl: c.cvUrl, clUrl: c.clUrl,
+      ndaUrl: c.ndaUrl, emailPdfUrl: c.emailPdfUrl, otherUrl: c.otherUrl, appFiles: (snap.applications[id] || {}).files || "" }; });
   const qBase = "newer_than:" + INTAKE_WINDOW_DAYS + "d " + notHandledQuery_();
   const q = "in:inbox has:attachment " + qBase;
   // Soonest months first: search month by month (current month, then the next six), then everything else.
@@ -198,9 +207,9 @@ function processInbox(){
       if(!p){
         label_(th, LBL.needsFix); h.needsFix++;
         const nfKey = "nf|" + origin.email + "|" + Utilities.formatDate(new Date(), "GMT", "yyyyMM");
-        if(quota > 5 && !alreadyAcked_(nfKey) && !isBlockedAddress(origin.email, INTERNAL.concat(getSetting_(snap, "noReplyList", [])))){
+        if(quota > 5 && !acked_(snap, ackKeys, nfKey) && !isBlockedAddress(origin.email, INTERNAL.concat(getSetting_(snap, "noReplyList", [])))){
           sendTemplate_(snap, /assoc/i.test(subject) ? "needsfix_associate" : "needsfix_internship", origin.email, { Name: origin.name });
-          recordAck_(nfKey); quota--;
+          ackKeys.push(nfKey); quota--;
         }
         continue;
       }
@@ -208,43 +217,47 @@ function processInbox(){
       if(snap.deletedKeys && snap.deletedKeys[key]){ label_(th, LBL.duplicate); h.superseded++; continue; }
       const existing = byKey[key];
       const msgTs = msg.getDate().getTime();
-      if(existing && new Date(existing.Received).getTime() >= msgTs){ label_(th, LBL.duplicate); h.superseded++; continue; }
+      if(existing && (existing.intakeTs || 0) >= msgTs){ label_(th, LBL.duplicate); h.superseded++; continue; }
       const coh = cohortFromSnap_(snap, p.month, p.year);
       const sub = candidateFolder_(cohortFolder_(folder, p.month + " " + p.year, p), origin.name, origin.email);
       const files = saveAttachments_(msg, sub, origin.name, p);
       const pdf = saveBodyPdf_(msg, sub, origin.name, p);
       // A later email with no attachments must never wipe documents the applicant already sent.
-      const keepDocs = !!(existing && picked.noFiles && (existing["CV link"] || existing["Cover link"] || existing["Other files"]));
-      if(existing && !keepDocs) trashUrls_([existing["CV link"], existing["Cover link"], existing["NDA link"], existing["Email PDF"]].concat(String(existing["Other files"] || "").split(" , ")));
-      else if(existing) trashUrls_([existing["Email PDF"]]);
+      const keepDocs = !!(existing && picked.noFiles && (existing.cvUrl || existing.clUrl || existing.otherUrl));
+      if(existing && !keepDocs) trashUrls_([existing.cvUrl, existing.clUrl, existing.ndaUrl, existing.emailPdfUrl].concat(String(existing.otherUrl || "").split(" , ")));
+      else if(existing) trashUrls_([existing.emailPdfUrl]);
       if(picked.noFiles) h.noDocs = (h.noDocs || 0) + 1;
       const dl = (coh && coh.deadlines) || defaultDeadlines(p.month, p.year);
       const closeTs = dl.applyClose;
       const late = Date.now() > closeTs + 864e5;
       const folderUrl = (function(){ try{ return sub.getUrl ? sub.getUrl() : ""; }catch(e){ return ""; } })();
-      const row = { Received: new Date(msgTs), Track: p.track, Month: p.month, Year: p.year, Name: origin.name, Email: origin.email,
-        "CV link": keepDocs ? existing["CV link"] : files.cv, "Cover link": keepDocs ? existing["Cover link"] : files.cover,
-        "NDA link": keepDocs ? existing["NDA link"] : files.nda, "Email PDF": pdf, "Other files": keepDocs ? existing["Other files"] : files.other,
-        Status: late ? "Late" : "New", Key: key, Subject: cell_(subject, 500), Body: cell_(body, 6000),
-        Files: keepDocs ? existing.Files : cell_(files.names.join(" | "), 1000),
-        CandidateId: existing ? existing.CandidateId : "", Updated: new Date(), AI: "", MessageId: msg.getId(), ThreadId: th.getId() };
-      if(!row.CandidateId) row.CandidateId = "c_" + Utilities.getUuid().replace(/-/g, "").slice(0, 14);
-      writeRowObj_(sh, data.head, existing ? existing._row : 0, row);
-      if(!existing){ byKey[key] = Object.assign({ _row: sh.getLastRow() }, row); h.filed++; } else h.updated++;
+      const filing = {
+        cid: existing ? existing.id : ("c_" + Utilities.getUuid().replace(/-/g, "").slice(0, 14)), key: key, isNew: !existing,
+        month: p.month, year: p.year, track: p.track, name: origin.name, email: origin.email,
+        cvUrl: keepDocs ? existing.cvUrl : files.cv, clUrl: keepDocs ? existing.clUrl : files.cover,
+        ndaUrl: keepDocs ? existing.ndaUrl : files.nda, emailPdfUrl: pdf, otherUrl: keepDocs ? existing.otherUrl : files.other,
+        fileNames: keepDocs ? (existing.appFiles || "") : files.names.join(" | "),
+        subject: cell_(subject, 500), body: cell_(body, 6000), msgId: msg.getId(), threadId: th.getId(),
+        receivedAt: msgTs, late: late, filesFolder: folderUrl
+      };
+      filings.push(filing);
+      // so a second thread for the same applicant in this same run is treated as a repeat, not a new record
+      byKey[key] = { id: filing.cid, key: key, intakeTs: msgTs, cvUrl: filing.cvUrl, clUrl: filing.clUrl,
+        ndaUrl: filing.ndaUrl, emailPdfUrl: filing.emailPdfUrl, otherUrl: filing.otherUrl, appFiles: filing.fileNames };
+      if(filing.isNew) h.filed++; else h.updated++;
       label_(th, LBL.filed); applyMonthLabel_(th, p);
       if(late) h.late++;
-      folderLinks[row.CandidateId] = folderUrl;
       // Every applicant is answered, including one who wrote after the month closed. Before, a late application
       // was filed and then skipped here, so the nearest months — the ones whose deadline has already passed —
       // were the only ones nobody ever heard back from.
-      if(!existing && quota > 5 && !alreadyAcked_(key)){
+      if(filing.isNew && quota > 5 && !acked_(snap, ackKeys, key)){
         const ok = sendTemplate_(snap, "ack", origin.email, { Name: origin.name, FirstName: String(origin.name).split(" ")[0], Month: p.month + " " + p.year,
           Role: p.track === "Associate" ? "Associate role" : "internship",
           ShortlistDate: fmtDateIST(nextFuture_([dl.shortlistBy, dl.interviewBy, dl.approveBy])),
           ReplyBy: replyByPhrase_([dl.shortlistBy, dl.interviewBy, dl.approveBy]),
           LateNote: late ? lateNote_(p.month + " " + p.year, closeTs) : "" }, replyableThread_(th, origin.email));
-        recordAck_(key); quota--; h.acked++;
-        if(ok) mailLogs.push({ cid: row.CandidateId, mail: { ts: Date.now(), key: "ack", name: "Application acknowledgement", to: origin.email, ok: true, by: "Intake" } });
+        ackKeys.push(key); quota--; h.acked++;
+        if(ok) mailLogs.push({ cid: filing.cid, mail: { ts: Date.now(), key: "ack", name: "Application acknowledgement", to: origin.email, ok: true, by: "Intake" } });
       }
     }catch(e){
       h.errors++; h.err = String(e && e.message || e).slice(0, 300);
@@ -253,13 +266,14 @@ function processInbox(){
   }
   try{
     withStore_(st => {
-      syncSheetToStore_(st, sh);
-      Object.keys(folderLinks).forEach(cid => { const c = st.candidates[cid];
-        if(c && folderLinks[cid] && c.filesFolder !== folderLinks[cid]){ applyChange(c, "filesFolder", folderLinks[cid], Date.now()); bump_(st, c); } });
+      filings.forEach(f => applyFiling_(st, f));
+      ackKeys.forEach(k => { st.acked[k] = Date.now(); st.__dirty = true; });
       mailLogs.forEach(m => { const c = st.candidates[m.cid]; if(c){ c.mails.push(m.mail); bump_(st, c); } });
       applyCorrespondence_(st, corr);
     });
   }catch(e){ h.ok = false; h.err = "Could not update shared data: " + e.message; }
+  // The Sheet is a read-only mirror now, written after the fact and never read back.
+  try{ if(filings.length || corr.length) mirrorToSheet_(); }catch(e){ h.mirrorErr = String(e && e.message || e).slice(0, 160); }
   h.ms = Date.now() - t0; budgetAdd_(h.ms);
   health_("intake", h);
 }
@@ -356,8 +370,8 @@ function processReplies_(snap, folder, counselEmails, corr, h, t0){
   if(!Object.keys(byEmail).length) return;
   const seen = {};
   Object.keys(snap.candidates).forEach(id => { const c = snap.candidates[id]; (c.inbox || []).forEach(x => { if(x.msgId) seen[x.msgId] = 1; }); if(c.appMsgId) seen[c.appMsgId] = 1; });
-  readRows_(appSheet_()).rows.forEach(r => { if(r.MessageId) seen[String(r.MessageId)] = 1; });
-  const threads = GmailApp.search("in:inbox newer_than:4d -label:Status/Ignored", 0, 60);
+  Object.keys(snap.applications || {}).forEach(id => { const a = snap.applications[id]; if(a && a.msgId) seen[String(a.msgId)] = 1; });
+  const threads = GmailApp.search('in:inbox newer_than:4d -label:"' + LBL.notApp + '" -label:"Status/Ignored"', 0, 60);
   threads.forEach(th => {
     if(Date.now() - t0 > 120000) return;
     let touched = false;
@@ -390,7 +404,8 @@ function processReplies_(snap, folder, counselEmails, corr, h, t0){
       });
       corr.push({ cid: c.id, item }); seen[id] = 1; h.replies++; touched = true;
     });
-    if(touched && !th.getLabels().some(l => l.getName() === "Status/New")) label_(th, "Status/Correspondence");
+    // A reply inside the application's own thread needs no label — the thread is already Filed.
+    if(touched && !th.getLabels().some(l => l.getName() === LBL.filed || l.getName() === "Status/New")) label_(th, LBL.reply);
   });
 }
 function heuristicIntent_(text, atts){
@@ -599,14 +614,6 @@ function retryIntake_(p){
   });
   return { ok: true, retried: n };
 }
-function ackSheet_(){
-  const ss = SpreadsheetApp.openById(SHEET_ID);
-  let sh = ss.getSheetByName("Acked"); if(!sh){ sh = ss.insertSheet("Acked"); sh.appendRow(["Key", "When"]); }
-  return sh;
-}
-let _ackSet = null;
-function alreadyAcked_(k){ if(!_ackSet){ _ackSet = {}; ackSheet_().getRange("A:A").getValues().forEach(r => { if(r[0]) _ackSet[r[0]] = 1; }); } return !!_ackSet[k]; }
-function recordAck_(k){ if(_ackSet) _ackSet[k] = 1; ackSheet_().appendRow([k, new Date()]); }
 
 const FALLBACK_TEMPLATES = {
   ack: { subject: "We have received your application — Chambers of Bharat Chugh",
@@ -652,13 +659,86 @@ function sendToCandidate_(st, c, key, extra){
   return { ok };
 }
 
-/* ------------------------- Sheet → shared data ------------------------- */
+/* --------------------- an application → the shared data ---------------------
+ * The shared data is the only source of truth. The intake does its slow work (Drive, Gmail) first, collects
+ * plain objects, and then applies them all under one short lock. The Sheet is written afterwards as a mirror.
+ */
+function applyFiling_(st, f){
+  const now = Date.now();
+  const coh = ensureCohort_(st, f.month, f.year);
+  let c = st.candidates[f.cid];
+  if(!c){
+    c = normalizeCandidate({ id: f.cid, key: f.key, cohortId: coh.id, name: f.name, email: f.email,
+      track: /assoc/i.test(f.track) ? "associate" : "intern", source: "Application", stage: "applied",
+      createdAt: f.receivedAt || now, updatedAt: now,
+      hist: [{ ts: now, by: "Intake", txt: "Application filed from Gmail (" + String(f.subject || "").slice(0, 80) + ")" }] });
+    st.candidates[f.cid] = c;
+  } else {
+    c.hist.push({ ts: now, by: "Intake", txt: "A newer application email arrived — the record was updated" });
+    applyChange(c, "aiRequest", now, now);           // read it again, the documents may have changed
+  }
+  if(!c.key) applyChange(c, "key", f.key, now);
+  ["cvUrl", "clUrl", "ndaUrl", "emailPdfUrl", "otherUrl"].forEach(k => { const v = String(f[k] || ""); if(v !== c[k]) applyChange(c, k, v, now); });
+  if(f.filesFolder && c.filesFolder !== f.filesFolder) applyChange(c, "filesFolder", f.filesFolder, now);
+  applyChange(c, "intakeTs", f.receivedAt || now, now);
+  applyChange(c, "appMsgId", f.msgId || "", now);
+  applyChange(c, "gmailThread", f.threadId || "", now);
+  applyChange(c, "gmailUrl", gmailLink_(f.threadId), now);
+  if(!!c.late !== !!f.late) applyChange(c, "late", !!f.late, now);
+  // The subject, the body and the attachment names stay on the server: they are what the AI reads, and sending
+  // several thousand characters per candidate to every device would make the sync many times heavier.
+  st.applications[f.cid] = { subject: f.subject || "", body: f.body || "", files: f.fileNames || "",
+    msgId: f.msgId || "", threadId: f.threadId || "", receivedAt: f.receivedAt || now };
+  markCvFlag_(c, now);
+  bump_(st, c);
+  return c;
+}
+/** Has this applicant already been written to? Checks the store and anything queued in this same run. */
+function acked_(st, pending, key){ return !!((st.acked && st.acked[key]) || (pending || []).indexOf(key) > -1); }
+
+/* ---------------------------- the Sheet mirror ----------------------------
+ * One tab, rewritten from the shared data, for anyone who would rather look at a spreadsheet. Nothing reads it
+ * back, so editing it changes nothing — edit in the dashboard.
+ */
+const MIRROR_TAB = "Candidates";
+const MIRROR_HEADERS = ["Cohort", "Received", "Name", "Email", "Phone", "Track", "Mode", "Year / PQE", "College", "City",
+  "Stage", "Outcome", "Late", "Score", "AI score", "AI view", "Interview", "Approved", "NDA", "Extension",
+  "CV", "Cover letter", "Folder", "Gmail", "Updated", "CandidateId"];
+function mirrorToSheet_(st){
+  st = st || loadStore_();
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const sh = ss.getSheetByName(MIRROR_TAB) || ss.insertSheet(MIRROR_TAB);
+  const safe = v => (typeof v === "string" && /^[=+\-@]/.test(v)) ? ("'" + v) : (v == null ? "" : v);
+  const rows = Object.keys(st.candidates).map(id => st.candidates[id]).map(c => {
+    const coh = st.cohorts[c.cohortId] || {}, ai = c.aiSuggest || {}, x = (c.extensions || []).slice(-1)[0];
+    const sc = rubricScore(c.review, c.flags);
+    return [coh.label || "", c.intakeTs ? new Date(c.intakeTs) : "", c.name, c.email, c.phone,
+      c.track === "associate" ? "Associate" : "Intern", c.grantedMode || c.preferredMode || "",
+      c.track === "associate" ? (c.pqe ? c.pqe + " yrs PQE" : "") : c.year, c.college, c.city,
+      c.stage, c.outcome || "active", c.late ? "after close" : "", sc == null ? "" : sc,
+      ai.score == null ? "" : ai.score, ai.recommendation || "", (c.interview || {}).result || "",
+      (c.appr && (c.appr.mayank || c.appr.bypass)) ? "yes" : "", (c.nda || {}).status || "",
+      x ? (x.targetLabel + " (" + x.status + ")") : "", c.cvUrl || "", c.clUrl || "", c.filesFolder || "", c.gmailUrl || "",
+      new Date(c.updatedAt || 0), c.id];
+  }).sort((a, b) => String(a[0]).localeCompare(String(b[0])) || String(a[2]).localeCompare(String(b[2])));
+  sh.clearContents();
+  sh.getRange(1, 1, 1, MIRROR_HEADERS.length).setValues([MIRROR_HEADERS]);
+  if(rows.length) sh.getRange(2, 1, rows.length, MIRROR_HEADERS.length).setValues(rows.map(r => r.map(safe)));
+  try{ sh.setFrozenRows(1); }catch(e){}
+  return rows.length;
+}
+
+/* ----------------- one-time import of the old Applications tab -----------------
+ * Up to v24 the Sheet was the intake ledger and the shared data was built from it. Nothing reads the Sheet any
+ * more, so this runs once from setup() to carry any rows that are not already on a record across, and then
+ * never again. It is safe to run twice: a row whose key is already on file is skipped.
+ */
 /** Raise (or clear) the "no CV" flag without any AI, so the Review Desk is useful even with the AI switched off. */
 function markCvFlag_(c, now){
   if(c.cvUrl) resolveFlag_(c, "missing_cv", "Intake", now);
   else raiseFlag_(c, "missing_cv", "warn", "No CV came with the application. Ask for it, or paste the Drive link on the Profile tab.", now);
 }
-function syncSheetToStore_(st, sh){
+function importLegacySheet_(st, sh){
   const data = readRows_(sh);
   const idCol = data.head.indexOf("CandidateId") + 1;
   let created = 0, linked = 0, updated = 0;
@@ -690,6 +770,8 @@ function syncSheetToStore_(st, sh){
         hist: [{ ts: now, by: "Intake", txt: "Application filed from Gmail (" + String(r.Subject || "").slice(0, 80) + ")" }] });
       Object.keys(docs).forEach(k => { c[k] = String(docs[k] || ""); });
       st.candidates[cid] = c; markCvFlag_(c, now); bump_(st, c); created++;
+      st.applications[cid] = { subject: String(r.Subject || ""), body: String(r.Body || ""), files: String(r.Files || ""),
+        msgId: String(r.MessageId || ""), threadId: thread, receivedAt: rowTs || now };
     } else if(rowTs && rowTs > (c.intakeTs || 0)){
       Object.keys(docs).forEach(k => { if(docs[k] && docs[k] !== c[k]) applyChange(c, k, String(docs[k]), now); });
       applyChange(c, "intakeTs", rowTs, now);
@@ -697,6 +779,8 @@ function syncSheetToStore_(st, sh){
       if(thread){ applyChange(c, "gmailThread", thread, now); applyChange(c, "gmailUrl", gmailLink_(thread), now); applyChange(c, "appMsgId", String(r.MessageId || ""), now); }
       if(c.intakeTs && (c.hist || []).length) { applyChange(c, "aiRequest", now, now); c.hist.push({ ts: now, by: "Intake", txt: "Newer application email received — documents updated" }); }
       bump_(st, c); updated++;
+      st.applications[c.id] = { subject: String(r.Subject || ""), body: String(r.Body || ""), files: String(r.Files || ""),
+        msgId: String(r.MessageId || ""), threadId: thread, receivedAt: rowTs || now };
     }
   });
   return { created, linked, updated, total: Object.keys(st.candidates).length };
@@ -706,7 +790,8 @@ function syncSheetToStore_(st, sh){
 function nightly(){
   const t0 = Date.now(), h = { ok: true };
   try{ h.swept = autoSweepRejected(); }catch(e){ h.ok = false; h.err = e.message; }
-  try{ h.snapshot = writeSnapshot_(); }catch(e){ h.snapErr = e.message; }
+  try{ h.mirrored = mirrorToSheet_(); }catch(e){ h.snapErr = e.message; }
+  try{ h.ackPruned = pruneAcked_(); }catch(e){}
   h.ms = Date.now() - t0; budgetAdd_(h.ms);
   health_("nightly", h);
 }
@@ -732,24 +817,17 @@ function autoSweepRejected(){
   });
   return n;
 }
-/** A plain table of every candidate in the Sheet's "All candidates" tab, refreshed nightly — for anyone who prefers Sheets. */
-function writeSnapshot_(){
-  const st = loadStore_();
-  const ss = SpreadsheetApp.openById(SHEET_ID);
-  const sh = ss.getSheetByName("All candidates") || ss.insertSheet("All candidates");
-  const head = ["Cohort","Name","Email","Phone","Track","Stage","Outcome","Mode","Year","College","City","Score","AI score","AI recommendation","Interview","Approved","NDA","Extension","Last updated"];
-  const rows = Object.keys(st.candidates).map(id => st.candidates[id]).map(c => {
-    const coh = st.cohorts[c.cohortId] || {}, ai = c.aiSuggest || {}, x = (c.extensions || []).slice(-1)[0];
-    const sc = rubricScore(c.review, c.flags);
-    return [coh.label || "", c.name, c.email, c.phone, c.track, c.stage, c.outcome || "active", c.grantedMode || c.preferredMode, c.year, c.college, c.city,
-      sc == null ? "" : sc, ai.score == null ? "" : ai.score, ai.recommendation || "", (c.interview || {}).result || "", (c.appr && (c.appr.mayank || c.appr.bypass)) ? "yes" : "",
-      (c.nda || {}).status || "", x ? (x.targetLabel + " (" + x.status + ")") : "", new Date(c.updatedAt || 0)];
-  }).sort((a, b) => String(a[0]).localeCompare(String(b[0])) || String(a[1]).localeCompare(String(b[1])));
-  sh.clearContents();
-  sh.getRange(1, 1, 1, head.length).setValues([head]);
-  if(rows.length) sh.getRange(2, 1, rows.length, head.length).setValues(rows.map(r => r.map(v => (typeof v === "string" && /^[=+\-@]/.test(v)) ? "'" + v : (v == null ? "" : v))));
-  try{ sh.setFrozenRows(1); }catch(e){}
-  return rows.length;
+/** Keep the record of who has been written to from growing without limit. */
+function pruneAcked_(){
+  let n = 0;
+  withStore_(st => {
+    const keys = Object.keys(st.acked || {});
+    if(keys.length <= 4000) return;
+    keys.sort((a, b) => (st.acked[a] || 0) - (st.acked[b] || 0));
+    keys.slice(0, keys.length - 3000).forEach(k => { delete st.acked[k]; n++; });
+    st.__dirty = true;
+  });
+  return n;
 }
 
 /* ------------------------------ morning (9 AM) ----------------------------- */

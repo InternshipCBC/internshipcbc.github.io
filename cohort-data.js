@@ -214,7 +214,7 @@ export function buildCoreGs(){
 export const SCRIPT_FILES = [
   { file:'Core.gs', name:'Core.gs — shared data rules', desc:'Generated from the dashboard’s own code. Paste as is; never edit.' },
   { file:'Code.gs', name:'Code.gs — settings, setup, Gmail, digest & reminders', desc:'The ONLY file you edit: fill in the SETTINGS block (IDs, token, Gemini/Groq keys, team emails), then Run → setup. Also add the free Drive API and Google Calendar API services (⊕ Services).' },
-  { file:'WebApp.gs', name:'WebApp.gs — shared database & API', desc:'What every dashboard talks to. Deploy it as a Web app (Execute as Me, access Anyone).' },
+  { file:'WebApp.gs', name:'WebApp.gs — shared database & API', desc:'The shared data is the single source of truth: one file in Drive that every dashboard reads and writes. Deploy it as a Web app (Execute as Me, access Anyone).' },
   { file:'AI.gs', name:'AI.gs — AI vetting & assistant (Groq)', desc:'Optional. Reads each application’s subject and body, tags it and fills blank profile fields. Never sends mail.' }
 ];
 export async function loadScripts(){
